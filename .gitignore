@@ -1,0 +1,70 @@
+# R Environment
+.Rproj.user
+.Rhistory
+.RData
+.Ruserdata
+
+# Session files
+*.RData
+*.rds
+# Output directories
+/st_lusc+luad/
+/Fig/
+/figures/
+/plots/
+
+real/pos/
+real/pos_subset/
+real/prop/
+real/res/
+real/boundary/
+real/boundary_subset/
+real/computation/
+real/puck/
+real/reference/
+real/coords/
+
+sim/pos/
+sim/pos_subset/
+sim/prop/
+sim/res/
+sim/boundary/
+sim/boundary_subset/
+sim/computation/  
+
+
+# Data files
+*.csv
+*.tsv
+*.xlsx
+*.rda
+*.rdata
+FIG6.R
+
+# Log files
+*.log
+*.out
+
+# Temporary files
+*~
+*.tmp
+*.temp
+
+# OS files
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+
+# Package directories
+packrat/
+renv/
+
+# Knitr files
+*_cache/
+/cache/
+
+# Markdown outputs
+*.html
+*.pdf
+*.docx
