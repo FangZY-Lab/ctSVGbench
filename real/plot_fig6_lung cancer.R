@@ -83,7 +83,7 @@ for(dataset in datasets){
           axis.text = element_text(size = 7),
           legend.key.size = unit(0.2, "in")) +
     ggtitle(substr(dataset,10,40)) +
-    labs(fill = "Cell Type")
+    labs(fill="Cell type\n(NA = grey)")
   
   plots[[dataset]] <- p  
 }
@@ -312,4 +312,4 @@ p1 <- plot_grid(combined_tissue, jac_plot, ncol = 2, rel_widths = c(4, 2.69),
 p2 <- plot_grid(lusc_cor,plot_vl, ncol = 2,rel_widths = c(1,0.4),
                 labels = c('C',"D"),label_x = -0.01,label_y = 1.01)
 final_plot <- plot_grid(p1, p2, nrow = 2, rel_heights = c(3, 3.7))
-ggsave('./Fig/Fig6.pdf', width = 6.69, height = 6.7)
+ggsave('./Fig/Fig6-B.pdf', width = 6.69, height = 6.7)

@@ -72,8 +72,6 @@ column_groups <- tibble(
 )
 
 # ---- 6. legends ----
-
-
 legends <-  list( 
   list(
     palette = "sens_palette",
@@ -138,8 +136,6 @@ cinfo$name <- ifelse(cinfo$id %in% names(label_map),
                      cinfo$id)
 
 # # ---- 7. scale ----
-# data$RAM_GB <- mm(data$RAM_GB)
-# data$CPU_time <- mm(data$CPU_time)
 
 mm <- function(col) {
   col / max(col, na.rm = TRUE)

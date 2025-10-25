@@ -7,59 +7,41 @@
 my_theme.R - Custom ggplot theme for consistent plotting
 
 
-### Real Data Analysis (real/)
+### **Real Data Analysis**  
+Scripts for analyzing and visualizing real-world data.
 
-#### Main Analysis Scripts:
+- **`real/fig4_rotate.R`**: Rotates spots and then calls ctSVG.
+- **`real/plot_fig2_realdata.R`**: Plots figure 2 for consistency analysis.
+- **`real/plot_fig4_rotate.R`**: Plots figure 4 related to data rotation.
+- **`real/plot_fig5_time_mem.R`**: Plots time and memory performance for figure 5.
+- **`real/plot_fig6_lung_cancer.R`**: Plots figure 6 for lung cancer data.
+- **`real/plot_fig7_mbm.R`**: Plots figure 7 for MBM data.
+- **`real/plot_fig8_summary.R`**: Summary plot for method's performance.
+- **`real/plot_figs1_dataset.R`**: Summarizes the dataset used in figure 2 and figure 5.
+- **`real/preprocess_3_subset_spots.R`**: Preprocesses data for subset spots.
+- **`real/preprocess_2_bounary.R`**: Performs boundary preprocessing for real data. Required by spVC.
+- **`real/preprocess_1.3_lung_cancer.R`**: Lung cancer data preprocessing and subset creation.
+- **`real/preprocess_1.2_public_data.R`**: Preprocesses public datasets.
+- **`real/real_datasets1.R`**: Loads and analyzes real datasets without subsetting spots.
+- **`real/real_datasets2.R`**: Loads and analyzes real datasets with spot subsetting.
+- **`real/utils/real-bench.R`**: Benchmarking utilities for real data.
+- **`real/utils/real_expr_bench.R`**: Expression and p-value correlation benchmarking utilities.
+- **`real/utils/rotate_bench.R`**: Rotation benchmarking utilities.
 
-real datasets1.R, real datasets2.R - Main real data analysis pipelines
+### **Simulation**  
+Scripts for generating and analyzing simulated data.
 
-plot_fig2_realdata.R - Figure 2: Real data SVG detection results
+- **`sim/1-runsim.R`**: Runs simulation and calls ctSVG.
+- **`sim/fig3-permutation.R`**: Generates permutation-based dataset and calls ctSVG.
+- **`sim/plot_fig3f_permutation.R`**: Plots permutation results for figure 3f.
+- **`sim/plot_sim.R`**: General plotting of simulation results.
+- **`sim/plot_sim_den_Sfig.R`**: Density plot for supplementary figure about specificity in minority and majority cell types.
+- **`sim/utils/generate_sc.R`**: Generates simulated single-cell data.
+- **`sim/utils/generate_st_P1.R`**: Generates simulated spatial transcriptomics data with 10% dropout.
+- **`sim/utils/generate_st_P2.R`**: Generates simulated spatial transcriptomics data with 20% dropout.
+- **`sim/utils/generate_st_P3.R`**: Generates simulated spatial transcriptomics data with 30% dropout.
+- **`sim/utils/run_analysis_for_pattern.R`**: Runs analysis for simulated data patterns.
+- **`sim/utils/sim-bench.R`**: Benchmarking utilities for simulation.
 
-plot_fig3f_null.R - Figure 3: Null model comparison
-
-plot_fig4_rotate.R - Figure 4: Rotation robustness test
-
-plot_fig5_time_mem.R - Figure 5: Computational performance (time/memory)
-
-plot_fig6_lusc.R - Figure 6: LUSC cancer analysis
-
-plot_fig7_mbm.R - Figure 7: Melanoma brain metastasis analysis
-
-plot_fig8_summary.R - Figure 8: Summary figure
-
-plot_figs1_dataset.R - Supplementary Figure 1: Dataset overview
-
-#### Utility Functions (real/utils/):
-
-real-bench.R - Main benchmarking function for real data
-
-real_expr_bench.R - Benchmarking p-value and expression relation
-
-rotate_bench.R - Rotation-based robustness testing
-
-get_boundry_spVC.R - Boundary prepare for spVC method
-
-get_pos.R - Save spatial positions 
-
-### Simulation Analysis (sim/)
-
-#### Main Scripts:
-
-1-runsim.R - Main simulation pipeline
-
-plot_sim.R - Main simulation results plotting
-
-plot_sim_den_Sfig.R - Supplementary density figures for simulations
-
-#### Utility Functions (sim/utils/):
-
-sim-bench.R - Compare simulation results
-
-generate_sc.R - Single-cell simulation data generation
-
-generate_st_P1.R, generate_st_P2.R, generate_st_P3.R - Spatial pattern data generation (3 drop out paramter sets)
-
-run_analysis_for_pattern.R - Run per simulation data
-
-subset.R - Spots subsetting utilities
-
+### **Theme and Styles**
+- **`my_theme.R`**: Custom theme settings for consistent plotting styles across all figures.

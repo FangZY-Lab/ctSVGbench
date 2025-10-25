@@ -67,7 +67,7 @@ for (dataset in datasets){
     myRCTD <- create.RCTD(puck, reference = reference, max_cores = ncores)
     
     # run RCTD
-    if(grepl("Visium|ST", dt)){
+    if(grepl("Visium|ST", dataset)){
       myRCTD <- run.RCTD(myRCTD, doublet_mode = "full") 
       doublet_mode = F
     } else {
