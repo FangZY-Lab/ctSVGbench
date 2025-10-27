@@ -3,11 +3,6 @@ A systematic benchmarking of existing computational approaches for detecting cel
 
 ## Project Structure
 
-### Root Files
-
-my_theme.R - Custom ggplot theme for consistent plotting
-
-
 ### **Real Data Analysis**  
 Scripts for analyzing and visualizing real-world data.
 
