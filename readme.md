@@ -1,5 +1,5 @@
 # ctSVGbench
-A systematic benchmarking of existing computational approaches for detecting cell-type-specific spatially variable genes in spatial transcriptomics data
+Benchmarking existing computational approaches for detecting cell-type-specific spatially variable genes in spatial transcriptomics data
 
 ## Project Structure
 
