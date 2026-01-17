@@ -1,8 +1,8 @@
 
 get_wide_pval <- function(dataset,method){
-  if(method  %in% c('C-SIDE','CELINA','STANCE')){
+  if(method  %in% c('C-SIDE','CELINA','STANCE','CTSV')){
     
-    res.o <- readRDS(here('real','res',sprintf('%s-%s.rds',dataset,method)))
+    res.o <- readRDS(here('real','res',sprintf('%s-r0-%s.rds',dataset,method)))
     res.r30 <- readRDS(here('real','res',sprintf('%s-r30-%s.rds',dataset,method)))
     # res.r60 <- readRDS(here('real','res',sprintf('%s-r60-%s.rds',dataset,method)))
     res.r90 <- readRDS(here('real','res',sprintf('%s-r90-%s.rds',dataset,method)))
@@ -13,6 +13,11 @@ get_wide_pval <- function(dataset,method){
     res.r30 <- pre.res(dataset,method,angle=30)
     # res.r60 <- pre.res(dataset,method,angle=60)
     res.r90 <- pre.res(dataset,method,angle=90)
+  }else if(method=='ctsvg'){
+
+    res.o <- pre.ctsvg(dataset,angle=0)
+    res.r30 <- pre.ctsvg(dataset,angle=30)
+    res.r90 <- pre.ctsvg(dataset,angle=90)  
   }
 
   
@@ -27,6 +32,7 @@ get_wide_pval <- function(dataset,method){
   all_genes <- unique(unlist(lapply(all_lists, function(lst) {
     unlist(lapply(lst, rownames))
   })))
+  
   dat.pval <- do.call(rbind,lapply(names(all_lists),function(angle){
     
     lst <- all_lists[[angle]]
@@ -144,7 +150,7 @@ pre.res <- function(dataset,method,angle=0){
   prop <- readRDS(here('real','prop',sprintf('myRCTD_%s.rds',dataset))) 
   res.celina <- readRDS(here('real','res',sprintf('%s-CELINA.rds',dataset)))
   if(angle==0){
-    file=here('real','res',sprintf('%s-spVC.rds',dataset))
+    file=here('real','res',sprintf('%s-r0-spVC.rds',dataset))
   }else if(angle==30){
     file=here('real','res',sprintf('%s-r30-%s.rds',dataset,method))
   }else if(angle==60){
@@ -166,4 +172,28 @@ pre.res <- function(dataset,method,angle=0){
   
   names(res.spVC) <- names(res.celina)
   return(res.spVC)
+}
+
+
+pre.ctsvg <- function(dataset,angle=0){
+  method="ctsvg"
+    if(angle==0){
+    file=here('real','res',sprintf('%s-r0-%s.rds',dataset,method))
+  }else if(angle==30){
+    file=here('real','res',sprintf('%s-r30-%s.rds',dataset,method))
+  }else if(angle==60){
+    file=here('real','res',sprintf('%s-r60-%s.rds',dataset,method))
+  }else if(angle==90){
+    file=here('real','res',sprintf('%s-r90-%s.rds',dataset,method))
+  }
+  
+  ctsvg=readRDS(file)
+
+  res.ctsvg <- split(ctsvg, ctsvg$cluster)
+  res.ctsvg <- lapply(res.ctsvg, \(df)
+                      data.frame(
+                        pval = df$pval,
+                        row.names = df$gene
+                      ))  
+  
 }

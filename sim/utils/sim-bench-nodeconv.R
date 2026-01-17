@@ -13,14 +13,14 @@ svg_id <- c(paste0("celltype5","gene",1:75),paste0("celltype6","gene",76:150),
             paste0("celltype5","gene",151:200),paste0("celltype6","gene",151:200))
 
 ### get_pvalue_wide ---
-get_pvalue_wide <- function(dataset,svg_id){
+get_pvalue_wide_nodcv <- function(dataset,svg_id){
   
-  res.cside <- readRDS(here('sim','res',sprintf('%s-C-SIDE.rds',dataset)))
-  res.celina <- readRDS(here('sim','res',sprintf('%s-CELINA.rds',dataset)))
-  res.stance <- readRDS(here('sim','res',sprintf('%s-STANCE.rds',dataset)))
-  res.ctsv <- readRDS(here("sim","res", sprintf("%s-CTSV.rds", dataset)))
+  res.cside <- readRDS(here('sim','res',sprintf('%s-noRCTD-C-SIDE.rds',dataset)))
+  res.celina <- readRDS(here('sim','res',sprintf('%s-noRCTD-CELINA.rds',dataset)))
+  res.stance <- readRDS(here('sim','res',sprintf('%s-noRCTD-STANCE.rds',dataset)))
+  res.ctsv <- readRDS(here("sim","res", sprintf("%s-noRCTD-CTSV.rds", dataset)))
 
-  spVC=readRDS(here('sim','res',sprintf('%s-spVC.rds',dataset)))
+  spVC=readRDS(here('sim','res',sprintf('%s-noRCTD-spVC.rds',dataset)))
   idx=gsub("celltype","",names(res.celina))
   
   genes.v=names(spVC$results.varying)

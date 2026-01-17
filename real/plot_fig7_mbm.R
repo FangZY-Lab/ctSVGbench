@@ -21,15 +21,16 @@ library(DOSE)
 library(Matrix)
 library(RColorBrewer)
 library(patchwork)
+dataset <- c("Slide-seqV2_melanoma_GSM6025944_MBM13") 
 
-dataset <- c("Slide-seqV2_melanoma")
-methods <- c('C-SIDE','spVC','CELINA','STANCE')
+methods <- c('C-SIDE','spVC','CELINA','STANCE','CTSV')
 file <- sprintf('myRCTD_%s.rds',dataset)
 puck <- readRDS(here('real','puck',sprintf('myRCTD_%s.rds',dataset)))
 
 res.cside=readRDS(here('real','res',sprintf('%s-C-SIDE.rds',dataset)))
 res.celina=readRDS(here('real','res',sprintf('%s-CELINA.rds',dataset)))
 res.stance=readRDS(here('real','res',sprintf('%s-STANCE.rds',dataset)))
+res.ctsv=readRDS(here('real','res',sprintf('%s-CTSV.rds',dataset)))
 
 spVC=readRDS(here('real','res',sprintf('%s-spVC.rds',dataset)))
 prop <- readRDS(here('real','prop',sprintf('myRCTD_%s.rds',dataset))) 
@@ -52,7 +53,8 @@ all_lists <- list(
   CSIDE = res.cside, 
   spVC = res.spvc, 
   Celina = res.celina, 
-  STANCE = res.stance
+  STANCE = res.stance,
+  CTSV = res.ctsv
 )
 
 all_genes <- unique(unlist(lapply(all_lists, function(lst) {
@@ -140,6 +142,8 @@ shared2 <- intersection_info %>% filter(method_count == 2)
 shared3 <- intersection_info %>% filter(method_count == 3)
 shared4 <- intersection_info %>% filter(method_count == 4)
 
+
+
 # --- Enrichment analysis ---
 gene_sets_sig <- df.sig %>%
   group_by(method, cell_type) %>%
@@ -177,103 +181,18 @@ for (i in seq_len(nrow(gene_sets_sig))) {
   ego_results[[paste(method_i, cell_i, sep = " ")]] <- ego_simple
 }
 
-library(rrvgo)
 all_terms <- unique(c(ego_results[[1]]$ID, ego_results[[2]]$ID, ego_results[[3]]$ID))
-
-# --- UCell analysis ---
-library(UCell)
-library(Seurat)
-library(ggplot2)
-library(dplyr)
-library(tidyr)
-library(patchwork)
-library(ggforce)
-library(org.Hs.eg.db)
-library(AnnotationDbi)
-library(GO.db)
-library(Seurat)
-
-counts_matrix <- puck@counts[,rownames(pos)]
-seu <- CreateSeuratObject(counts = counts_matrix)
-seu <- NormalizeData(seu)
-data_matrix <- GetAssayData(seu, assay = "RNA", layer = "data")
-
-all_terms_gene_sets <- list()
-for (go_id in all_terms) {
-  if (go_id!="GO:2000047"){
-    genes <- AnnotationDbi::select(org.Hs.eg.db,
-                                   keys = go_id,
-                                   columns = c("SYMBOL"),
-                                   keytype = "GO")
-    genes <- unique(na.omit(genes$SYMBOL))
-    desc <- Term(GOTERM[[go_id]])
-    all_terms_gene_sets[[desc]] <- genes
-  }
-}
-
-set.seed(123)
-ranks <- StoreRankings_UCell(data_matrix)
-scores <- ScoreSignatures_UCell(ranks, features = all_terms_gene_sets)
-score_coor <- cbind(pos, scores[rownames(pos), ])
-score_coor_long <- score_coor %>%
-  pivot_longer(cols = ends_with("_UCell"),
-               names_to = "GeneSet",
-               values_to = "Score")
-
-score_coor_long$GeneSet=gsub('_UCell','',score_coor_long$GeneSet)
-library(stringr)
-
-score_coor_long$Label <- sapply(score_coor_long$GeneSet, function(x) {
-  words <- str_split(x, " ")[[1]]
-  if (length(words) > 3) {
-    paste(
-      paste(words[1:3], collapse = " "),
-      paste(words[4:min(6, length(words))], collapse = " "),
-      sep = "\n"
-    )
-  } else {
-    x
-  }
-})
-score_coor_long$Label <- ifelse(score_coor_long$Label=='membraneless organelle assembly',"membraneless organelle \nassembly",score_coor_long$Label)
-
-plots <- lapply(unique(score_coor_long$Label), function(gs){
-  score_coor_sub <- score_coor_long[score_coor_long$Label == gs, ]
-  
-  q_low  <- quantile(score_coor_sub$Score, 0.02, na.rm = TRUE)
-  q_high <- quantile(score_coor_sub$Score, 0.98, na.rm = TRUE)
-  if(q_low==q_high){
-    q_low=min(score_coor_sub$Score)
-    q_high=max(score_coor_sub$Score)
-  }
-  ggplot(score_coor_sub, aes(x = x, y = y, color = Score)) +
-    geom_point(size = 0.1) +
-    scale_color_gradientn(
-      colors = rev(RColorBrewer::brewer.pal(11, "PiYG")),
-      limits = c(q_low, q_high),
-      oob = scales::squish
-    ) +
-    coord_equal() +
-    theme_void(base_size = 7) +
-    theme(
-      legend.key.width = unit(0.1, "in"),
-      legend.key.size  = unit(0.1, "in"),
-      strip.text       = element_text(size = 7)
-    ) +
-    ggtitle(gs)
-})
-wrap_plots(plots, ncol=4, nrow=7)
-ggsave('./Fig/s/ucell.pdf',width = 6.69,height=9)
 
 # --- Top genes ---
 top_gene_list <- df.sig %>%
+  filter(cell_type=='Tumor cells') %>% 
   arrange(method, pval) %>%
   group_by(method) %>%
-  slice_head(n = 20) %>%
+  slice_head(n = 7) %>%
   summarise(top_genes = list(unique(gene_name))) %>%
   deframe()  
 
-common_top_genes <- Reduce(intersect, top_gene_list)
+common_top_genes <- Reduce(intersect, top_gene_list[c("C-SIDE","STANCE","Celina")])
 print(common_top_genes)
 
 genes_to_plot <- c("PMEL", "VIM", "GAPDH", "ENO1")
@@ -306,7 +225,6 @@ prop_long <- prop %>%
 prop_long$cell_type <- factor(prop_long$cell_type, levels = cell_type_order)
 
 # --- Save environment ---
-save.image(file = "./plot/case_plot.rda")
 
 my_theme <- 
   theme(
@@ -317,15 +235,22 @@ my_theme <-
     strip.text  = element_text(size = 7)
   )
 
-methods <- c("C-SIDE", "Celina", "STANCE","spVC")
-colors <- c("#0073C2FF","#EFC000FF" ,"#CD534CFF","#868686FF")
+methods <- c("C-SIDE", "Celina", "spVC", "STANCE","CTSV","ctSVG")
+colors <- c("#0073C2FF","#EFC000FF","#868686FF","#CD534CFF","#7AA6DCFF","#003C67FF")
 method_colors <- setNames(colors, methods)
 
 
 ##
+prop.use <- prop[, -which(colnames(prop) == "Low quality.cells")]
+avg_props <- colMeans(prop.use, na.rm = TRUE)
+
+avg_df <- data.frame(
+  CellType = names(avg_props), 
+  Proportion = avg_props      
+)
 p0 <- ggplot(avg_df, aes(x = '', y = Proportion, fill = CellType)) +
   geom_bar(stat = "identity") +
-  labs(y="",x = 'BMB13',fill="cell type") +
+  labs(y="",x = 'MBM13',fill="Cell type") +
   theme_void(base_size = 7) +
   theme(legend.position = 'right',
         axis.title = element_text(),
@@ -342,8 +267,8 @@ p0 <- ggplot(avg_df, aes(x = '', y = Proportion, fill = CellType)) +
                     ))
 p0 
 
-common_cells <- intersect(rownames(prop), rownames(pos))
-prop_filtered <- prop[common_cells, ]
+common_cells <- intersect(rownames(prop.use), rownames(pos))
+prop_filtered <- prop.use[common_cells, ]
 pos_filtered <- pos[common_cells, ]
 
 max_cell_types <- apply(prop_filtered, 1, function(x) {
@@ -387,11 +312,11 @@ p2 <- gene_counts_complete %>%
   theme(    plot.margin = margin(1, 0, 0, 0),
             legend.position = c(0.1,0.85))
 p2
-
+library(ggvenn)
 # p3：Venn
 p3 <- ggvenn(
   sig_gene_list,
-  fill_color =  c("#0073C2FF","#EFC000FF" ,"#CD534CFF"),
+  fill_color =  c("#0073C2FF","#7AA6DCFF","#EFC000FF" ,"#CD534CFF"),
   stroke_size = 0.1,
   show_percentage = FALSE,
   fill_alpha = 0.8,
@@ -400,7 +325,7 @@ p3 <- ggvenn(
   
 )+theme( plot.margin = margin(0, 0, 0, 0))
 p3
-
+ggsave('Fig/p3.pdf')
 # p4：spatial expr
 p4 <- ggplot(plot_expr_log, aes(x = x, y = y, color = log_expr),alpha=0.5) +
   geom_point(size = 0.01) +
@@ -428,7 +353,7 @@ p4
 
 library(dplyr)
 results_unsim <- list()
-
+library(clusterProfiler)
 for (i in seq_len(nrow(gene_sets_sig))) {
   method_i <- gene_sets_sig$method[i]
   cell_i <- gene_sets_sig$cell_type[i]
@@ -520,7 +445,6 @@ legend_color <- ggpubr::get_legend(
 
 pgo_l <- plot_grid(legend_size, legend_color, nrow = 1, rel_widths = c(1, 2))
 pgo <- plot_grid(pgo_p+theme(legend.position = "none"),pgo_l,nrow=2,rel_heights = c(1,0.15))
-ggsave("./Fig/case-2.pdf", width = 6.9, height = 4.4, units = "in")
 
 library(cowplot)
 library(ggplot2)
@@ -535,7 +459,6 @@ top_row <- plot_grid(
   labels = c("A","","B","C")
 )
 
-
 # -----------------------------
 # 2. final
 # -----------------------------
@@ -547,6 +470,6 @@ final_plot <- plot_grid(
   
 )
 
-ggsave("./Fig/Fig6.pdf", final_plot, width = 6.67, height = 6.6, units = "in")
+ggsave("./Fig/Fig7.pdf", final_plot, width = 6.67, height = 6.6, units = "in")
 
 

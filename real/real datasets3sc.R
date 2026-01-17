@@ -2,7 +2,6 @@ Sys.setenv(OPENBLAS_NUM_THREADS = "1")
 Sys.setenv(OMP_NUM_THREADS = "1")
 library(RhpcBLASctl)
 blas_set_num_threads(1)
-setwd('/home/user/Fanglab1/yh/ctSVGbench/')
 
 library(spacexr) #C-SIDE
 library(spVC)
@@ -24,35 +23,80 @@ library(Seurat)
 library(Matrix)
 library(arrow)  
 library(jsonlite)
-
 source('/home/user/Fanglab1/yh/ctSVGbench/real/CTSV.R')
+ncores=15
 
-dataset=  "SeqFish+_cortex"
+datasets <- c(
+  "StereoSeq_CBMSTA_Macaque1_T110",
+  "StereoSeq_CBMSTA_Macaque1_T42",
+  "StereoSeq_CBMSTA_Marmoset1_T478", 
+  "StereoSeq_CBMSTA_Marmoset1_T514",
+  "StereoSeq_CBMSTA_Mouse1_T167",
+  "StereoSeq_CBMSTA_Mouse1_T169",
+  "StereoSeq_CBMSTA_Mouse1_T171",
+  "StereoSeq_CBMSTA_Mouse1_T176",
+  "StereoSeq_CBMSTA_Mouse1_T185",
+  "StereoSeq_CBMSTA_Mouse1_T189",
+  "StereoSeq_CBMSTA_Mouse2_T349",
+  "VisiumHD_LUAD_2431", 
+  "VisiumHD_LUAD_6123", 
+  "VisiumHD_LUAD_6976", 
+  "VisiumHD_LUSC_5488", 
+  "VisiumHD_LUSC_7437", 
+  "VisiumHD_LUSC_7941",
+  "MERFISH_hypothalamus",
+  "SeqFish+_cortex"  
+)
 
-for (i in c(34:49)){
-   ncores=20    
-    file <- sprintf('myRCTD_%s.rds',dataset)
-    puck<- readRDS(here('real','puck',file))
-    pos <- readRDS(here('real','pos',file))
-    pos <- as.data.frame(pos) 
-    colnames(pos) <- c('x', 'y')
-    counts.orign <- puck@counts
-
-    pos <- pos[intersect(rownames(pos),colnames(counts.orign)),] 
-    rownames(pos) <- sample(rownames(pos))
-    counts.orign <- counts.orign[,intersect(rownames(pos),colnames(counts.orign))] 
-
-    mito_genes = unique(c(grep("^MT-", rownames(counts.orign)), grep("^mt-", rownames(counts.orign))))
-    mat <- as(counts.orign, "dgCMatrix")
-    low_genes = which(Matrix::rowSums(mat > 0)<20)
-    remove_genes = unique(c(mito_genes, low_genes))
-    if(length(remove_genes)>0){
-      counts = mat[-remove_genes,]
-    }else{
-      counts = mat
-    }
-
+for (dataset in datasets){
+  library(RhpcBLASctl)
+  blas_set_num_threads(1)
+  file <- sprintf('myRCTD_%s.rds',dataset)
+  puck<- readRDS(here('real','puck',file))
+  reference <- readRDS(here('real','reference',file))
+  pos <- readRDS(here('real','pos_subset',file))
+  counts.orign <- puck@counts[,rownames(pos)]
+  counts.sc <- reference@counts
+  celltypes <- reference@cell_types
+  
+  mito_genes = unique(c(grep("^MT-", rownames(counts.orign)), grep("^mt-", rownames(counts.orign))))
+  mat <- as(counts.orign, "dgCMatrix")
+  low_genes = which(Matrix::rowSums(mat > 0)<20)
+  remove_genes = unique(c(mito_genes, low_genes))
+  if(length(remove_genes)>0){
+    counts = mat[-remove_genes,]
+  }else{
+    counts = mat
+  }
+  
+  ncell <- data.frame(table(celltypes))
+  if(any(ncell$Freq<25)){
+    filter_cell <- ncell$celltypes[ncell$Freq<25]    
+    filter_index <- which(celltypes %in% filter_cell )
+    celltypes <- celltypes[-filter_index]
+    new_level <- unique(as.character(celltypes))
+    celltypes <- factor(celltypes, levels = new_level)
+    counts.sc <- counts.sc[,-filter_index]
+  }
+  reference <- Reference(counts = counts.sc, cell_types = as.factor(celltypes), min_UMI = 1) 
+  puck <- SpatialRNA(coords = pos, counts = counts)
+  myRCTD <- create.RCTD(puck, reference = reference, max_cores = ncores)
+  myRCTD <- run.RCTD(myRCTD, doublet_mode = "doublet") 
+  
+  prop <- as.matrix(normalize_weights(myRCTD@results$weights))
+  
+  cell_type <- apply(prop, 1, function(row) {
+    return(colnames(prop)[which.max(row)])
+  })
+  
+  prop <- sapply(sort(unique(cell_type)), function(x) as.numeric(cell_type == x))
+  dimnames(prop) <- list(names(cell_type), sort(unique(cell_type)))
+  prop <- as.data.frame(prop)
+  saveRDS(prop,here('real','prop',file))
+  
   prop <- readRDS(here('real','prop',file))
+
+  
   ct_total <- colSums(prop)
   top3_ct <- names(sort(ct_total, decreasing = TRUE))[1:3]
   prop_top3 <- prop[, top3_ct, drop = FALSE]
@@ -117,7 +161,7 @@ for (i in c(34:49)){
     res.cside <- NULL
   }
   
-  saveRDS(res.cside,here('real','res',sprintf('%s-C-SIDE-null%s.rds',dataset,i)))
+  saveRDS(res.cside,here('real','res',sprintf('%s-C-SIDE.rds',dataset)))
   
   ### Create Celina object ---
   celltype_to_test <- names(tail(sort(colSums(prop_top3)),3))
@@ -137,10 +181,10 @@ for (i in c(34:49)){
   Obj = Testing_interaction_all(Obj, num_cores=ncores)
   
   res.celina <- Obj@result
-  saveRDS(res.celina,here('real','res',sprintf('%s-CELINA-null%s.rds',dataset,i)))
+  saveRDS(res.celina,here('real','res',sprintf('%s-CELINA.rds',dataset)))
   
   ### Create STANCE object ---
-  ncores=110
+  ncores=96
   
   Obj.STANCE<- creatSTANCEobject(counts = counts,
                                  pos = pos,
@@ -176,7 +220,7 @@ for (i in c(34:49)){
       NULL
     }
   )  
-  saveRDS(res.stance,here('real','res',sprintf('%s-STANCE-null%s.rds',dataset,i)))
+  saveRDS(res.stance,here('real','res',sprintf('%s-STANCE.rds',dataset)))
   
   #fit the ctsvg model
   coord <- pos
@@ -202,7 +246,7 @@ for (i in c(34:49)){
   )
   
   
-  saveRDS(res.ctsvg,here('real','res',sprintf('%s-ctsvg-null%s.rds',dataset,i)))
+  saveRDS(res.ctsvg,here('real','res',sprintf('%s-ctsvg.rds',dataset)))
   
   
   #fit the spVC model
@@ -232,11 +276,10 @@ for (i in c(34:49)){
     }
   )
   
-  saveRDS(res.spvc,here('real','res',sprintf('%s-spVC-null%s.rds',dataset,i)))
+  saveRDS(res.spvc,here('real','res',sprintf('%s-spVC.rds',dataset)))
   
   
   #fit the CTSV model 
-
   spe <- SpatialExperiment(assay = counts[,rownames(prop_top3)], colData = pos[rownames(prop_top3),], spatialCoordsNames = c('x', 'y')) 
   CTSV.results <- CTSV(spe, W = as.matrix(prop_top3), num_core = ncores) 
   res.ctsv.matrix <- CTSV.results$pval
@@ -248,9 +291,5 @@ for (i in c(34:49)){
     ),
     top3_ct
   )
-  saveRDS(res.ctsv,here('real','res',sprintf('%s-CTSV-null%s.rds',dataset,i)))  
-}                
-
-
-
-
+  saveRDS(res.ctsv,here('real','res',sprintf('%s-CTSV.rds',dataset)))
+}

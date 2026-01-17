@@ -13,18 +13,23 @@ library(ggtext)
 library(ggprism)
 library(ggpmisc)
 source(here('real','utils',"rotate_bench.R"))
-source('F:/ctSVGbench/my_theme.R')
+source('./my_theme.R')
 
 datasets <- c(
-  "Slide-seq_tumor",
-  "Slide-seqV2_hippocampus",
-  "Slide-seqV2_mouseOB",
-  "ST_developmental_heart",
-  "Visium_mousebrain"
+  "StereoSeq_CBMSTA_Marmoset1_T514",
+  "StereoSeq_CBMSTA_Mouse1_T189",
+  "StereoSeq_CBMSTA_Mouse2_T349",
+  "MERFISH_hypothalamus",
+  "SeqFish+_cortex"  
 )
+# conc.df.sc=conc.df
+# colnames(conc.df.sc)[2]="angle"
+# conc.df <- rbind(conc.df.sp,conc.df.sc)
+# write.csv(conc.df,file = "Fig/fig4A+figS.csv")
 
 for (dataset in datasets){
-  methods <- c('C-SIDE','spVC','CELINA','STANCE')
+
+  methods <- c('C-SIDE','CELINA','STANCE',"CTSV","ctsvg",'spVC')[-c(6)]  # spVC excluded: returned empty results
   
   conc.res <- do.call(rbind,lapply(methods,function(method){
     dat.pval.wide <- get_wide_pval(dataset,method)
@@ -37,7 +42,8 @@ for (dataset in datasets){
                            "C-SIDE" = "C-SIDE",
                            "CELINA" = "Celina",
                            "STANCE" = "STANCE",
-                           "spVC" = "spVC"))
+                           "spVC" = "spVC",
+                           "ctsvg"="ctSVG"))
   
   bin_size <- 5  # Change this to 50 if you want bins of 50 ranks instead of 5
   conc.res$rank_bin <- floor((conc.res$rank - 1) / bin_size) + 1
@@ -98,7 +104,7 @@ library(dplyr)
 library(data.table)
 
 conc.all <- lapply(datasets, function(dataset) {
-  methods <- c('C-SIDE','spVC','CELINA','STANCE')
+  methods <- c('C-SIDE','CELINA','STANCE',"CTSV","ctsvg",'spVC')[-c(6)]
   
   conc.res <- do.call(rbind, lapply(methods, function(method) {
     dat.pval.wide <- get_wide_pval(dataset, method)
@@ -111,12 +117,13 @@ conc.all <- lapply(datasets, function(dataset) {
                            "C-SIDE" = "C-SIDE",
                            "CELINA" = "Celina",
                            "STANCE" = "STANCE",
-                           "spVC" = "spVC"))
+                           "spVC" = "spVC",
+                           "ctsvg"= "ctSVG"))
   
   conc.res <- as.data.table(conc.res)
   
   # Compute mean concordance for ranks 1–30 grouped by method and angle
-  mean_conc <- conc.res[rank >= 1 & rank <= 30, 
+  mean_conc <- conc.res[rank >= 1 & rank <= 100, 
                         .(mean_conc = mean(conc, na.rm = TRUE)),
                         by = .(method, angle2)]
   mean_conc$datasets <- dataset
@@ -128,7 +135,7 @@ conc.df <- rbindlist(conc.all, idcol = NULL)
 library(ggplot2)
 library(viridis)
 library(data.table)
-conc.df$method <- factor(conc.df$method,levels = c("C-SIDE","spVC", "Celina", "STANCE"))
+conc.df$method <- factor(conc.df$method,levels = c("C-SIDE","spVC", "Celina", "STANCE","CTSV","ctSVG"))
 # Heatmap of mean concordance across datasets
 p1 <- ggplot(conc.df, aes(x = method, y = datasets, fill = mean_conc)) +
   geom_tile(color = "white", linewidth = 1) +
@@ -153,6 +160,7 @@ p1 <- ggplot(conc.df, aes(x = method, y = datasets, fill = mean_conc)) +
     panel.grid = element_blank()
   )
 p1
+ggsave('./Fig/Fig4-A.pdf', width = 6.69, height = 2)
 
 summary_df_rob2 <- conc.df %>%
   group_by(method) %>%
@@ -212,7 +220,7 @@ calc_similarity <- function(dat.pval.wide,
   return(result)
 }
 
-methods <- c('C-SIDE','spVC','CELINA','STANCE')
+methods <- c('C-SIDE','CELINA','STANCE',"CTSV","ctsvg",'spVC')[-c(6)]
 
 cor.res <- expand.grid(dataset = datasets, method = methods, stringsAsFactors = FALSE) %>%
   pmap_dfr(function(dataset, method) {
@@ -261,7 +269,8 @@ plot.df <- plot.df %>%
                          "C-SIDE" = "C-SIDE",
                          "CELINA" = "Celina",
                          "STANCE" = "STANCE",
-                         "spVC" = "spVC")) %>% 
+                         "spVC" = "spVC",
+                         "ctsvg" = "ctSVG")) %>% 
   mutate(angle=angle2)
 
 # Rank distribution per metric
@@ -298,11 +307,12 @@ p2 <- ggplot(rank.count, aes(x = rank, y = method, size = count, color = rank)) 
     legend.key.size = unit(0.05, "in"), 
     legend.key.width = unit(0.05, "in"),   
     axis.text.x = element_text(angle = 45, hjust = 1)
-  )
+  )+
+  xlim(0.8,5.1)
 p2
 
 plot_grid(plotlist = list(p1,p2), nrow = 2, rel_heights = c(1,1), labels = c("A", "B"))
-ggsave('./Fig/Fig4.pdf', width = 6.69, height = 4)
+ggsave('./Fig/s/rotate_sc.pdf', width = 6.69, height = 4)
 
 summary_df_rob1 <- plot.df %>%
   group_by(method,metric) %>%

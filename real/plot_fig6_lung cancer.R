@@ -26,105 +26,121 @@ library(reshape2)
 library(here)
 library(Seurat)
 library(patchwork)
+
 datasets <- c(
-  "VisiumHD_LUSC_AXB-5488-D1",
-  "VisiumHD_LUSC_AXB-7941-D1",
-  "VisiumHD_LUSC_AXB-7437-D1",
-  "VisiumHD_LUAD_AXB-2431-A1",
-  "VisiumHD_LUAD_AXB-6123-A1",
-  "VisiumHD_LUAD_AXB-6976-A1"
+  "VisiumHD_LUAD_2431", 
+  "VisiumHD_LUAD_6123", 
+  "VisiumHD_LUAD_6976", 
+  "VisiumHD_LUSC_5488", 
+  "VisiumHD_LUSC_7437", 
+  "VisiumHD_LUSC_7941"
 )
-source('F:/ctSVGbench/my_theme.R')
+source('./my_theme.R')
 
-# Step 1: Spatial Cell Type Mapping Visualization
-plots <- list()
-for(dataset in datasets){
-  data_dir <- paste0('./st_lusc+luad/', substr(dataset,15,25), "/square_008um")
-  file <- sprintf('myRCTD_%s.rds', dataset)
-  prop <- readRDS(here('real','prop', file))
+# # Step 1: Spatial Cell Type Mapping Visualization
+# plots <- list()
+# for(dataset in datasets){
+#   data_dir <- paste0('./st_lusc+luad/', substr(dataset,15,25), "/square_008um")
+#   file <- sprintf('myRCTD_%s.rds', dataset)
+#   prop <- readRDS(here('real','prop', file))
   
-  # Load raw Visium data and create Seurat object
-  counts <- Read10X(file.path(data_dir, "filtered_feature_bc_matrix"))
-  obj <- CreateSeuratObject(counts, assay = "Spatial")
-  image.data <- Seurat:::Read10X_Image(
-    image.dir = file.path(data_dir, "spatial"),
-    filter.matrix = TRUE
-  )
-  obj[["slice1"]] <- image.data  
-  obj <- NormalizeData(obj, assay = "Spatial")
+#   # Load raw Visium data and create Seurat object
+#   counts <- Read10X(file.path(data_dir, "filtered_feature_bc_matrix"))
+#   obj <- CreateSeuratObject(counts, assay = "Spatial")
+#   image.data <- Seurat:::Read10X_Image(
+#     image.dir = file.path(data_dir, "spatial"),
+#     filter.matrix = TRUE
+#   )
+#   obj[["slice1"]] <- image.data  
+#   obj <- NormalizeData(obj, assay = "Spatial")
   
-  # Assign cell types
-  celltype_assign <- colnames(prop)[max.col(prop, ties.method = "first")]
-  names(celltype_assign) <- rownames(prop)
-  spots_to_plot <- names(celltype_assign)
+#   # Assign cell types
+#   celltype_assign <- colnames(prop)[max.col(prop, ties.method = "first")]
+#   names(celltype_assign) <- rownames(prop)
+#   spots_to_plot <- names(celltype_assign)
   
-  # Subset Seurat object
-  obj_subset <- obj[, spots_to_plot]
-  obj_subset <- AddMetaData(obj_subset, metadata = celltype_assign, col.name = "celltype")
+#   # Subset Seurat object
+#   obj_subset <- obj[, spots_to_plot]
+#   obj_subset <- AddMetaData(obj_subset, metadata = celltype_assign, col.name = "celltype")
   
-  # Define cell type colors
-  cols <- RColorBrewer::brewer.pal(5, "Set2")
-  names(cols) <- c("Cancer", "Endothelial", "Epithelial", "Immune", "Stroma")
-  cols <- c(cols, "Unassigned" = NA)
+#   # Define cell type colors
+#   cols <- RColorBrewer::brewer.pal(5, "Set2")
+#   names(cols) <- c("Cancer", "Endothelial", "Epithelial", "Immune", "Stroma")
+#   cols <- c(cols, "Unassigned" = NA)
   
-  # Plot spatial map
-  p <- SpatialDimPlot(
-    obj_subset,
-    group.by = "celltype",
-    pt.size.factor = 15,
-    label = FALSE,
-    crop = TRUE 
-  ) +
-    scale_fill_manual(values = cols, na.value = "lightgrey") +
-    theme(plot.title = element_text(hjust = 0.5, size = 7),
-          legend.position = "bottom",
-          text = element_text(size = 7),
-          axis.title = element_text(size = 7),
-          axis.text = element_text(size = 7),
-          legend.key.size = unit(0.2, "in")) +
-    ggtitle(substr(dataset,10,40)) +
-    labs(fill="Cell type\n(NA = grey)")
+#   # Plot spatial map
+#   p <- SpatialDimPlot(
+#     obj_subset,
+#     group.by = "celltype",
+#     pt.size.factor = 15,
+#     label = FALSE,
+#     crop = TRUE 
+#   ) +
+#     scale_fill_manual(values = cols, na.value = "lightgrey") +
+#     theme(plot.title = element_text(hjust = 0.5, size = 7),
+#           legend.position = "bottom",
+#           text = element_text(size = 7),
+#           axis.title = element_text(size = 7),
+#           axis.text = element_text(size = 7),
+#           legend.key.size = unit(0.2, "in")) +
+#     ggtitle(substr(dataset,10,40)) +
+#     labs(fill="Cell type\n(NA = grey)")
   
-  plots[[dataset]] <- p  
-}
+#   plots[[dataset]] <- p  
+# }
 
-# Combine all tissue plots
-combined_tissue <- wrap_plots(plots, ncol = 3) + plot_layout(guides = "collect") &
-  theme(legend.position = "bottom",
-        legend.key.width = unit(0.1, "in"),
-        legend.text = element_text(size = 7))
+# # Combine all tissue plots
+# combined_tissue <- wrap_plots(plots, ncol = 3) + plot_layout(guides = "collect") &
+#   theme(legend.position = "bottom",
+#         legend.key.width = unit(0.1, "in"),
+#         legend.text = element_text(size = 7))
 
 
 # Step 2: Identify Significant Genes per Method
 
 sig <- list()
 for(dataset in datasets){
-  methods <- c('C-SIDE','spVC','CELINA','STANCE')
+  methods <- c('C-SIDE','spVC','CELINA','STANCE',"CTSV","ctsvg")
   file <- sprintf('myRCTD_%s.rds', dataset)
   puck <- readRDS(here('real','puck', sprintf('myRCTD_%s.rds', dataset)))
-  
+  ctsvg=readRDS(here('real','res',sprintf('%s-ctsvg.rds',dataset)))
+  res.ctsvg <- split(ctsvg, ctsvg$cluster)
+  res.ctsvg <- lapply(res.ctsvg, \(df)
+                      data.frame(
+                        pval = df$pval,
+                        row.names = df$gene
+                      ))  
+  res.ctsv=readRDS(here('real','res',sprintf('%s-CTSV.rds',dataset)))                       
   res.cside <- readRDS(here('real','res', sprintf('%s-C-SIDE.rds', dataset)))
   res.celina <- readRDS(here('real','res', sprintf('%s-CELINA.rds', dataset)))
   res.stance <- readRDS(here('real','res', sprintf('%s-STANCE.rds', dataset)))
-  spVC <- readRDS(here('real','res', sprintf('%s-spVC.rds', dataset)))
+  
   prop <- readRDS(here('real','prop', sprintf('myRCTD_%s.rds', dataset))) 
   pos <- readRDS(here('real','pos', sprintf('myRCTD_%s.rds', dataset))) 
-  
-  # Build spVC results
-  genes.v <- names(spVC$results.varying)
-  idx <- match(names(res.celina), colnames(prop))
-  
-  res.spvc <- lapply(idx, function(ct){
-    pval <- sapply(spVC$results.varying[genes.v], function(x){
-      x$p.value[paste0("gamma_X", ct)]
+  spVC=readRDS(here('real','res',sprintf('%s-spVC.rds',dataset)))
+  if(is.null(spVC)){
+    res.spVC=NULL
+  }else {
+    idx=match(names(res.celina),colnames(prop))
+    genes.v=names(spVC$results.varying)
+    res.spVC <- lapply(idx,function(ct){
+      pval=sapply(spVC$results.varying[genes.v],function(x){
+        x$p.value[paste0("gamma_X", ct)]
+      })
+      names(pval)=sapply(strsplit(names(pval),"\\."),"[[",1)
+      data.frame(pval = na.omit(pval))
     })
-    names(pval) <- sapply(strsplit(names(pval), "\\."), "[[", 1)
-    data.frame(pval = na.omit(pval))
-  })
-  names(res.spvc) <- names(res.celina)
+    
+    names(res.spVC) <- names(res.celina)
+  }
   
   # Combine all method results
-  all_lists <- list(CSIDE = res.cside, spVC = res.spvc, Celina = res.celina, STANCE = res.stance)
+  all_lists <- list(CSIDE = res.cside,
+                    spVC = if (is.null(spVC)) NULL else res.spVC,
+                    Celina = res.celina, 
+                    STANCE = res.stance,
+                    ctSVG = res.ctsvg,
+                    CTSV = res.ctsv)
   all_genes <- unique(unlist(lapply(all_lists, function(lst) {
     unlist(lapply(lst, rownames))
   })))
@@ -171,11 +187,10 @@ for(dataset in datasets){
   df.sig <- dat.pval %>% filter(pval < alpha)
   sig[[dataset]] <- df.sig
 }
-
+# write.csv(sig_df,'Fig/TableS3_lung_ctSVG_gene.csv',row.names = F)
 
 
 # Step 3: Compute Jaccard Similarity Across Patients
-
 sig_df <- bind_rows(sig, .id = "sample_id") %>%
   separate(sample_id, into = c("platform", "cancer_sample"), sep = "_", extra = "merge", remove = FALSE) %>%
   separate(cancer_sample, into = c("cancer", "sample"), sep = "_", extra = "merge", remove = FALSE)
@@ -194,35 +209,45 @@ jaccard_index <- function(a, b) length(intersect(a, b)) / length(union(a, b))
 
 jar_results <- gene_sets2 %>%
   group_by(cancer, method, cell_type) %>%
+  filter(n_distinct(cancer_sample) >= 2) %>%
   reframe({
     samples <- unique(cancer_sample)
-    if (length(samples) < 2) return(NULL)
     pairs <- combn(samples, 2, simplify = FALSE)
     map_dfr(pairs, function(p) {
       genes1 <- genes[cancer_sample == p[1]][[1]]
       genes2 <- genes[cancer_sample == p[2]][[1]]
-      tibble(sample1 = p[1], sample2 = p[2], jaccard = jaccard_index(genes1, genes2))
+      tibble(
+        sample1 = p[1],
+        sample2 = p[2],
+        jaccard = jaccard_index(genes1, genes2)
+      )
     })
-  }) %>% ungroup()
+  }) %>%
+  ungroup()
+
 
 summary_df <- jar_results %>%
   group_by(method, cancer, cell_type) %>%
   summarise(mean_jaccard = mean(jaccard), sd_jaccard = sd(jaccard), .groups = "drop")
-method_levels <- c("C-SIDE", "spVC", "Celina", "STANCE")
+method_levels <- c("C-SIDE", "spVC", "Celina", "STANCE","CTSV","ctSVG")
 summary_df$method <- factor(summary_df$method, levels = method_levels)
 jar_results$method  <- factor(jar_results$method,  levels = method_levels)
+
 jac_plot <- ggplot(summary_df, aes(x = cancer, y = mean_jaccard, fill = cancer)) +
   geom_col(alpha = 1) +
-  geom_errorbar(aes(ymin = mean_jaccard - sd_jaccard, ymax = mean_jaccard + sd_jaccard), width = 0.2) +
-  geom_jitter(data = jar_results, aes(x = cancer, y = jaccard), width = 0.15, size = 0.1, color = "black") +
-  facet_wrap(~method, ncol = 4) +
+  geom_errorbar(aes(ymin = mean_jaccard - sd_jaccard, ymax = mean_jaccard + sd_jaccard), width = 0.1) +
+  geom_jitter(data = jar_results, aes(x = cancer, y = jaccard), width = 0.13, size = 0.1, color = "black") +
+  facet_wrap(~method, ncol = 5) +
   theme_minimal(base_size = 7) +
   my_theme+
   scale_fill_manual(values = c("#33A02C", "#1F78B4")) +
   labs(y = "Mean Jaccard Index", x = "") +
-  theme(legend.position = "none", axis.text.x = element_text(angle = 45, hjust = 1))
+  theme(legend.position = "none",
+   axis.text.x = element_text(angle = 90, hjust = 0.5),
+    plot.margin = margin(0, 2, 0, 1),
+    panel.spacing.x = unit(0.01, "in"))
 jac_plot
-
+ggsave("Fig/jac.pdf",width=1)
 
 # Step 4: Expression vs. Significance Correlation
 
@@ -252,38 +277,89 @@ df$dataset <- substr(df$dataset, 10, 30)
 df <- df %>%
   mutate(cancer = substr(dataset, 1, 4))
 
-df$method <- factor(df$method,levels = c("C-SIDE","spVC", "Celina", "STANCE")) 
+df$method <- factor(df$method,levels = c("C-SIDE","spVC", "Celina", "STANCE","CTSV","ctSVG")) 
 
-luad_cor <- subset(df,cancer=="LUAD") %>% 
-ggplot(aes(x = log10(expr+0.5), y = logp)) +
+df_stat_LUSC <- df %>%
+  filter(cancer == "LUSC") %>%
+  group_by(dataset, method) %>%
+  filter(
+    sd(expr, na.rm = TRUE) > 0,
+    sd(logp, na.rm = TRUE) > 0
+  ) %>%
+  ungroup()
+
+
+lusc_cor <- ggplot(
+  data = subset(df, cancer == "LUSC"),
+  aes(x = log10(expr + 0.5), y = logp)
+) +
   geom_point(alpha = 0.4) +
-  facet_grid(dataset~method) +
-  stat_cor(method = "spearman", label.x.npc = "left", label.y.npc = "top", size = 2) +
+
+  facet_grid(dataset ~ method) +
+
+  stat_cor(
+    data = df_stat_LUSC,         
+    method = "spearman",
+    label.x.npc = "left",
+    label.y.npc = "top",
+    size = 1.5
+  ) +
+
   labs(
-    x =  expression(log[10]("normalized mean expression")),
+    x = expression(log[10]("normalized mean expression")),
     y = expression(-log[10](pval))
   ) +
   theme_minimal() +
-  my_theme
+  my_theme +
+  theme(plot.margin = margin(0, 2, 0, 2),
+    axis.text.x = element_text(size=4))
+
+
+
+
+df_stat_LUAD <- df %>%
+  filter(cancer == "LUAD") %>%
+  group_by(dataset, method) %>%
+  filter(
+    sd(expr, na.rm = TRUE) > 0,
+    sd(logp, na.rm = TRUE) > 0
+  ) %>%
+  ungroup()
+
+
+luad_cor <- ggplot(
+  data = subset(df, cancer == "LUAD"),
+  aes(x = log10(expr + 0.5), y = logp)
+) +
+  geom_point(alpha = 0.4) +
+  
+  facet_grid(dataset ~ method) +
+  
+  stat_cor(
+    data = df_stat_LUAD,         
+    method = "spearman",
+    label.x.npc = "left",
+    label.y.npc = "top",
+    size = 1.5
+  ) +
+  
+  labs(
+    x = expression(log[10]("normalized mean expression")),
+    y = expression(-log[10](pval))
+  ) +
+  theme_minimal() +
+  my_theme +
+  theme(plot.margin = margin(0, 2, 0, 2),
+  axis.text.x = element_text(size=5))
+
 ggsave('./Fig/s/luad_cor.pdf', width = 6.69, height = 3.69)
-
-lusc_cor <- subset(df,cancer=="LUSC") %>% 
-  ggplot(aes(x = log10(expr+0.5), y = logp)) +
-  geom_point(alpha = 0.4) +
-  facet_grid(dataset~method) +
-  stat_cor(method = "spearman", label.x.npc = "left", label.y.npc = "top", size = 2) +
-  labs(
-    x =  expression(log[10]("normalized mean expression")),
-    y = expression(-log[10](pval))
-  ) +
-  theme_minimal() +
-  my_theme+
-  theme(plot.margin = margin(0, 2, 0, 2))
 
 # Compute Spearman correlations
 cor_res <- df %>%
   group_by(method, dataset,cancer) %>%
   summarise(cor = cor(expr, logp, method = "spearman", use = "complete.obs"))
+cor_res <- cor_res %>% filter(!is.na(cor))
+
 
 # Violin plot summarizing correlations
 plot_vl <- ggplot(cor_res, aes(x = method, y = cor)) +
@@ -299,17 +375,37 @@ plot_vl <- ggplot(cor_res, aes(x = method, y = cor)) +
   scale_fill_manual(values = method_colors)+
   labs(x = "Methods", y = "Spearman correlation", color = "Cancer") +
   theme(legend.position = "top",
-        plot.margin = margin(0, 2, 0, 0),
-  )+
+        axis.text.x = element_text(angle = 45, hjust = 1),
+        plot.margin = margin(0, 3, 0, 0)
+
+  )+ 
   my_theme
 
 plot_vl
 
 # Step 5: Combine and Save Final Figures
+p1 <- ggdraw() +
+  draw_plot(jac_plot, x = 4/6.29, y = 0, width = 2.29/6.29, height = 1)
 
-p1 <- plot_grid(combined_tissue, jac_plot, ncol = 2, rel_widths = c(4, 2.69), 
-                labels = c('A', 'B'),label_x = -0.01,label_y = 1.01)
 p2 <- plot_grid(lusc_cor,plot_vl, ncol = 2,rel_widths = c(1,0.4),
                 labels = c('C',"D"),label_x = -0.01,label_y = 1.01)
+
 final_plot <- plot_grid(p1, p2, nrow = 2, rel_heights = c(3, 3.7))
-ggsave('./Fig/Fig6-B.pdf', width = 6.69, height = 6.7)
+ggsave('./Fig/Fig6.1.pdf', width = 6.69, height = 6.7)
+
+
+blank_plot <- ggplot() + 
+  theme_void() 
+
+p1 <- ggdraw() +
+  draw_plot(jac_plot, x = 4/6.29, y = 0, width = 2.29/6.29, height = 1)
+
+p2 <- plot_grid(
+  blank_plot,  
+  plot_vl, 
+  ncol = 2,
+  rel_widths = c(1,0.4),
+  labels = c('C',"D"),  
+  label_x = -0.01,
+  label_y = 1.01
+)

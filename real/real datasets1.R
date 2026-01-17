@@ -15,6 +15,7 @@ library(devtools)
 library(reshape2)
 library(dplyr)
 library(here)
+source('/home/user/Fanglab1/yh/ctSVGbench/real/CTSV.R')
 
 ncores=96
 datasets <- c(
@@ -28,7 +29,8 @@ datasets <- c(
   "Slide-seqV2_melanoma",
   "Visium_bladder",
   "Visium_tail",
-  "StereoSeq_mouseOB"
+  "StereoSeq_mouseOB",
+  "Visium_melanoma"
 )
 
 
@@ -44,8 +46,8 @@ for (dataset in datasets){
   celltypes <- reference@cell_types
   
   ncell <- data.frame(table(celltypes))
-  if(any(ncell$Freq<100)){
-    filter_cell <- ncell$celltypes[ncell$Freq<100]    
+  if(any(ncell$Freq<25)){
+    filter_cell <- ncell$celltypes[ncell$Freq<25]    
     filter_index <- which(celltypes %in% filter_cell )
     celltypes <- celltypes[-filter_index]
     new_level <- unique(as.character(celltypes))
@@ -215,6 +217,22 @@ for (dataset in datasets){
               file =here('real','computation',sprintf('%s-STANCE.csv',dataset)),
               sep = ',',
               row.names = FALSE)
+  spe <- SpatialExperiment(assay = counts[,rownames(prop)], colData = pos[rownames(prop),], spatialCoordsNames = c('x', 'y')) 
+
+  CTSV.results <- CTSV(spe, W = as.matrix(prop), num_core = ncores) 
+  res.ctsv.matrix <- CTSV.results$pval
+  res.ctsv <- setNames(
+    lapply(seq_along(colnames(prop)), function(i){
+       data.frame(pval = pmin(res.ctsv.matrix[,i], res.ctsv.matrix[,i+ncol(prop)]),
+                 row.names = rownames(CTSV.results$qval))
+    }
+    ),
+    colnames(prop)
+  )
+  ct_total <- colSums(prop)
+  top3_ct <- head(names(sort(ct_total, decreasing = TRUE)),3)
+
+  saveRDS(res.ctsv[top3_ct],here('real','res',sprintf('%s-CTSV.rds',dataset)))  
 }                
 
 

@@ -664,94 +664,286 @@ counts <- counts[,spot]
 puck <- SpatialRNA(coords=pos1, counts=counts)
 saveRDS(puck,here('ctSVGbench','real','puck',"myRCTD_Visium_pancreas.rds"))
 
-### Visium HD LUSC
-library(AnnotationDbi)
-library(org.Hs.eg.db)
-library(data.table)  # fast file reading
-library(dplyr)
 
+##slide_seq2_melanoma
+expr_mat <- readMM("/home/user/Fanglab1/yh/sc-ref/slide_seq2_melanoma/GSE200218_sc_sn_counts.mtx.gz")
+
+dim(expr_mat)
+gene_names <- fread(
+  input = "/home/user/Fanglab1/yh/sc-ref/slide_seq2_melanoma/GSE200218_sc_sn_gene_names.csv.gz",
+  header = FALSE  
+)
+gene_vec <- as.character(gene_names[[1]])  
+rownames(expr_mat) <- gene_vec[-1]
+colnames(expr_mat) <- metadata[[1]]
+
+metadata=fread('/home/user/Fanglab1/yh/sc-ref/slide_seq2_melanoma/GSE200218_sc_sn_metadata.csv.gz')
+dim(metadata)
+df_mpm <- metadata[patient %like% "MPM", c("barcode_all", "cell_type_main")]
+df_mbm <- metadata[patient %like% "MBM", c("barcode_all", "cell_type_main")]
+
+dim(df_mpm)
+counts.sc.mpm <- expr_mat[,df_mpm$barcode_all]
+counts.sc.mpm <- counts.sc.mpm[!duplicated(rownames(counts.sc.mpm)),]
+celltypes_mpm <- setNames(make.names(df_mpm$cell_type_main),df_mpm$barcode_all)
+reference.mpm <- Reference(counts = counts.sc.mpm, cell_types = factor(celltypes_mpm), min_UMI = 1)
+saveRDS(reference.mpm,here('ctSVGbench','real','reference',"myRCTD_Slide-seqV2_melanoma_MPM.rds"))
+
+
+dim(df_mbm)
+counts.sc.mbm <- expr_mat[,df_mbm$barcode_all]
+counts.sc.mbm <- counts.sc.mbm[!duplicated(rownames(counts.sc.mbm)),]
+celltypes_mbm <- setNames(make.names(df_mbm$cell_type_main),df_mbm$barcode_all)
+reference.mbm <- Reference(counts = counts.sc.mbm, cell_types = factor(celltypes_mbm), min_UMI = 1)
+saveRDS(reference.mbm,here('ctSVGbench','real','reference',"myRCTD_Slide-seqV2_melanoma_MBM.rds"))
+celltypes_mpm[1:3]
+
+###
 library(data.table)
+library(here)
+
+process_single_sample <- function(sample_id, data_dir, output_dir) {
+  
+  counts_file <- file.path(data_dir, paste0(sample_id, "_slide_raw_counts.csv.gz"))
+  pos_file <- file.path(data_dir, paste0(sample_id, "_slide_raw_counts.csv.gz")) %>% 
+    gsub("raw_counts", "spatial_info", .) 
+  
+  if (!file.exists(counts_file) || !file.exists(pos_file)) {
+    return(FALSE)
+  }
+  
+  counts <- fread(counts_file)
+  counts <- as.data.frame(counts)
+  rownames(counts) <- counts[, 1]  
+  counts[, 1] <- NULL  
+  
+  pos <- fread(pos_file)
+  pos <- as.data.frame(pos[, 2:4])  
+  rownames(pos) <- pos[, 1] 
+  pos[, 1] <- NULL  
+  colnames(pos) <- c('x', 'y')  
+  
+  puck <- SpatialRNA(coords = pos, counts = counts)
+  
+  if (!dir.exists(output_dir)) {
+    dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
+  }
+  output_rds <- file.path(output_dir, paste0("myRCTD_Slide-seqV2_melanoma_", sample_id, ".rds"))
+  saveRDS(puck, output_rds)
+  
+  message(paste0("sample : ", sample_id, " done", output_rds))
+  return(TRUE)
+}
+
+root_dir = "/home/user/Fanglab1/yh/sc-ref/slide_seq2_melanoma"
+gz_files <- list.files(root_dir, pattern = "\\.gz$", full.names = FALSE)
+sample_ids <- gz_files %>% 
+  gsub("_slide.*\\.gz$", "", .) %>%  
+  unique()  
+output_dir <- here('ctSVGbench', 'real', 'puck')
+
+lapply(sample_ids, function(sid) {
+  process_single_sample(
+    sample_id = sid,
+    data_dir = root_dir,
+    output_dir = output_dir
+  )})
+
+
+##### stereoseq_mosta
+library(readr)
 library(dplyr)
+library(tidyr)
+library(tibble)
+library(ggplot2)
 
-# Load annotations
-annotations <- fread("sq_cells_annotations.csv")
-head(annotations)
-annotations[1:3, 1:3]
+process_stereo_gem <- function(gem_gz_path) {
+  file_name <- tools::file_path_sans_ext(tools::file_path_sans_ext(basename(gem_gz_path)))
+  out_dir <- file.path(dirname(gem_gz_path), file_name)
+  
+  if (!dir.exists(out_dir)) {
+    dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
+  }
+  
+  gem_data <- read_tsv(
+    file = gem_gz_path,
+    show_col_types = FALSE
+  )
+  
+  cell_col <- ifelse("cell_label" %in% colnames(gem_data), "cell_label", "cell_id")
 
-celltypes <- setNames(annotations$original_ann_level_1, annotations$V1)
-celltypes <- factor(celltypes)
-saveRDS(celltypes, 'celltypes.rds')
+umi_col <- ifelse("total_umi" %in% colnames(gem_data), "total_umi", "umi_count")
 
-# Load counts matrix
-counts <- fread("sq_cells_counts.csv")
-umis <- counts[[1]]
-expr <- as.matrix(counts[, -1, with = FALSE])
-rownames(expr) <- umis
+valid_data <- gem_data 
+  filter(!!sym(cell_col) != 0)
 
-ensembl_ids <- colnames(expr)
+counts <- valid_data %>%
+  group_by(!!sym(cell_col), gene) %>%
+  summarise(umi_value = sum(!!sym(umi_col)), .groups = "drop") %>%
+  pivot_wider(names_from = gene, values_from = umi_value, values_fill = 0) %>%
+  column_to_rownames(cell_col)
+  
+  pos <- valid_data %>%
+    group_by(!!sym(cell_col)) %>%
+    summarise(
+      x = mean(x),
+      y = mean(y),
+      .groups = "drop"
+    ) %>%
+    column_to_rownames(cell_col)
 
-# Convert Ensembl → Gene Symbol
-gene_symbols <- mapIds(
-  org.Hs.eg.db,
-  keys = gsub("\\..*", "", ensembl_ids),
-  column = "SYMBOL",
-  keytype = "ENSEMBL",
-  multiVals = "first"
+  saveRDS(t(counts), file = file.path(out_dir, "counts.rds"))
+  saveRDS(pos, file = file.path(out_dir, "pos.rds"))
+
+  puck <- SpatialRNA(coords=pos, counts=counts)
+  puck_save_root <- "/home/user/Fanglab1/yh/ctSVGbench/real/puck/"
+  puck_save_file <- file.path(puck_save_root, paste0("myRCTD_", file_name, ".rds"))
+  saveRDS(puck, file = puck_save_file)
+}
+
+
+files <- list.files("/home/user/Fanglab1/yh/sc-ref/stereoseq_cbmsta",pattern = ".gz",full.names = T)
+
+for (f in files){
+ process_stereo_gem(gem_gz_path = f)
+
+}
+
+###E16.5_E1S3
+library(Matrix)   
+library(readr)    
+target_dir <- "/home/user/Fanglab1/yh/sc-ref/stereoseq_mosta/E16.5_E1S3"
+counts_path <- file.path(target_dir, "counts.mtx")
+annotation_path <- file.path(target_dir, "annotation.csv")
+position_path <- file.path(target_dir, "position.csv")
+
+counts_matrix <- readMM(counts_path)
+gene_names <- readLines(file.path(target_dir, "gene_names.txt"))
+cell_names <- readLines(file.path(target_dir, "cell_names.txt"))
+dim(counts_matrix)
+length(gene_names)
+length(cell_names)
+
+colnames(counts_matrix) <- gene_names
+rownames(counts_matrix) <- cell_names
+
+head(rownames(counts_matrix))
+head(colnames(counts_matrix))
+
+annotation_df <- read.csv(
+  file = annotation_path,
+  header = TRUE,  
+  stringsAsFactors = FALSE  
 )
+head(annotation_df)
 
-expr <- expr[, !is.na(gene_symbols)]
-gene_symbols <- na.omit(gene_symbols)
-colnames(expr) <- gene_symbols
-expr <- t(expr)
-expr <- expr[!duplicated(rownames(expr)), ]
+celltypes <- setNames(annotation_df$annotation, annotation_df$cell_id)
+prop <- sapply(sort(unique(celltypes)), function(x) as.numeric(celltypes == x))
+dimnames(prop) <- list(names(celltypes), sort(unique(celltypes)))
+prop <- as.data.frame(prop)
 
-reference <- Reference(counts = expr, cell_types = celltypes, min_UMI = 1)
 
-saveRDS(reference, here('real', 'reference', "myRCTD_VisiumHD_LUSC_AXB-5488-D1.rds"))
-saveRDS(reference, here('real', 'reference', "myRCTD_VisiumHD_LUSC_AXB-7437-D1.rds"))
-saveRDS(reference, here('real', 'reference', "myRCTD_VisiumHD_LUSC_AXB-7941-D1.rds"))
-
-# Load cell annotations
-annotations <- fread("ad_cells_annotations.csv")
-head(annotations)
-annotations[1:3, 1:3]
-ref <- annotations[annotations$study == 'Thienpont_2018', ]
-ref <- as.data.frame(ref)
-
-rownames(ref) <- ref$V1
-
-# Load counts matrix
-counts <- fread("./counts_matrix_with_names_ad.csv")
-umis <- counts[[1]]
-expr <- as.matrix(counts[, -1, with = FALSE])
-rownames(expr) <- umis
-
-umis_use <- intersect(umis, ref$V1)
-ref <- ref[umis_use, ]
-celltypes <- setNames(ref$original_ann_level_1, ref$V1)
-celltypes <- factor(celltypes)
-
-expr <- expr[umis_use, ]
-ensembl_ids <- colnames(expr)
-
-# Convert Ensembl → Gene Symbol
-gene_symbols <- mapIds(
-  org.Hs.eg.db,
-  keys = gsub("\\..*", "", ensembl_ids),
-  column = "SYMBOL",
-  keytype = "ENSEMBL",
-  multiVals = "first"
+position_df <- read.csv(
+  file = position_path,
+  header = TRUE,
+  stringsAsFactors = FALSE
 )
+head(position_df)
 
-expr <- expr[, !is.na(gene_symbols)]
-gene_symbols <- na.omit(gene_symbols)
-colnames(expr) <- gene_symbols
-expr <- t(expr)
-expr <- expr[!duplicated(rownames(expr)), ]
+pos=data.frame(x=position_df$x,y=position_df$y,row.names = position_df$cell_id)
+counts <- t(counts_matrix)
+dim(counts)
+mylist <- list(counts=counts,pos=pos,prop=prop)
+saveRDS(mylist,file = here('real','input_sc',"stereoseq_mosta_E16.5_E1S3.rds"))
 
-reference <- Reference(counts = expr, cell_types = celltypes, min_UMI = 1)
 
-saveRDS(reference, here('real', 'reference', "myRCTD_VisiumHD_LUAD_AXB-6123-A1.rds"))
-saveRDS(reference, here('real', 'reference', "myRCTD_VisiumHD_LUAD_AXB-2431-A1.rds"))
-saveRDS(reference, here('real', 'reference', "myRCTD_VisiumHD_LUAD_AXB-6976-A1.rds"))
+###E16.5_E1S3_whole_brain    
+target_dir <- "/home/user/Fanglab1/yh/sc-ref/stereoseq_mosta/E16.5_E1S3_whole_brain"
+counts_path <- file.path(target_dir, "counts.mtx")
+annotation_path <- file.path(target_dir, "annotation.csv")
+position_path <- file.path(target_dir, "position.csv")
 
+counts_matrix <- readMM(counts_path)
+gene_names <- readLines(file.path(target_dir, "gene_names.txt"))
+cell_names <- readLines(file.path(target_dir, "cell_names.txt"))
+dim(counts_matrix)
+length(gene_names)
+length(cell_names)
+
+colnames(counts_matrix) <- gene_names
+rownames(counts_matrix) <- cell_names
+
+head(rownames(counts_matrix))
+head(colnames(counts_matrix))
+
+annotation_df <- read.csv(
+  file = annotation_path,
+  header = TRUE,  
+  stringsAsFactors = FALSE  
+)
+head(annotation_df)
+
+celltypes <- setNames(annotation_df$annotation, annotation_df$cell_id)
+prop <- sapply(sort(unique(celltypes)), function(x) as.numeric(celltypes == x))
+dimnames(prop) <- list(names(celltypes), sort(unique(celltypes)))
+prop <- as.data.frame(prop)
+
+
+position_df <- read.csv(
+  file = position_path,
+  header = TRUE,
+  stringsAsFactors = FALSE
+)
+head(position_df)
+
+pos=data.frame(x=position_df$x,y=position_df$y,row.names = position_df$cell_id)
+counts <- t(counts_matrix)
+dim(counts)
+mylist <- list(counts=counts,pos=pos,prop=prop)
+saveRDS(mylist,file = here('real','input_sc',"stereoseq_mosta_E16.5_E1S3_whole_brain.rds"))
+
+
+###Dorsal_midbrain
+target_dir <- "/home/user/Fanglab1/yh/sc-ref/stereoseq_mosta/Dorsal_midbrain"
+counts_path <- file.path(target_dir, "counts.mtx")
+annotation_path <- file.path(target_dir, "annotation.csv")
+position_path <- file.path(target_dir, "position.csv")
+
+counts_matrix <- readMM(counts_path)
+gene_names <- readLines(file.path(target_dir, "gene_names.txt"))
+cell_names <- readLines(file.path(target_dir, "cell_names.txt"))
+dim(counts_matrix)
+length(gene_names)
+length(cell_names)
+
+colnames(counts_matrix) <- gene_names
+rownames(counts_matrix) <- cell_names
+
+head(rownames(counts_matrix))
+head(colnames(counts_matrix))
+
+annotation_df <- read.csv(
+  file = annotation_path,
+  header = TRUE,  
+  stringsAsFactors = FALSE  
+)
+head(annotation_df)
+
+celltypes <- setNames(annotation_df$annotation, annotation_df$cell_id)
+prop <- sapply(sort(unique(celltypes)), function(x) as.numeric(celltypes == x))
+dimnames(prop) <- list(names(celltypes), sort(unique(celltypes)))
+prop <- as.data.frame(prop)
+
+
+position_df <- read.csv(
+  file = position_path,
+  header = TRUE,
+  stringsAsFactors = FALSE
+)
+head(position_df)
+
+pos=data.frame(x=position_df$x,y=position_df$y,row.names = position_df$cell_id)
+counts <- t(counts_matrix)
+dim(counts)
+mylist <- list(counts=counts,pos=pos,prop=prop)
+saveRDS(mylist,file = here('real','input_sc',"stereoseq_mosta_Dorsal_midbrain.rds"))

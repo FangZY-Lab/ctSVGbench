@@ -15,7 +15,7 @@ library(devtools)
 library(reshape2)
 library(dplyr)
 library(here)
-library(ctSVG)
+# library(ctSVG)
 library(CTSV)
 library(SpatialExperiment)
 library(here)
@@ -97,6 +97,7 @@ CTSV <- function(spe, W, num_core=1, BPPARAM = NULL){
   return(list("pval" = P_val,
               "qval" = Q_val))
 }
+
 run_analysis_for_pattern <- function(pt,  
                                      pos.use, prop.use, dt = dataset, boundary, 
                                      rep_id = 1, paramset='P1',
@@ -118,7 +119,7 @@ run_analysis_for_pattern <- function(pt,
   
   counts.sc <- refer.sc$expr_mat
   celltypes <- refer.sc$celltypes
-  
+  prop <- stlist$prop
   pos <- stlist$pos
   counts.orign <- stlist$counts
   mat <- as(counts.orign, "dgCMatrix")
@@ -138,41 +139,65 @@ run_analysis_for_pattern <- function(pt,
   # dataset name with replicate ID
   dataset <- sprintf("sim_%s-%s-%s-rep%d", dt, pt, paramset, rep_id)
   
-  # create SpatialRNA and reference objects
-  puck <- SpatialRNA(coords = pos, counts = counts)
-  reference <- Reference(counts = counts.sc, cell_types = as.factor(celltypes), min_UMI = 1) 
-  myRCTD <- create.RCTD(puck, reference = reference, max_cores = ncores)
-  
-  # run RCTD
-  if(grepl("Visium|ST", dt)){
-    myRCTD <- run.RCTD(myRCTD, doublet_mode = "full") 
-    doublet_mode = F
-  } else {
-    myRCTD <- run.RCTD(myRCTD, doublet_mode = "doublet") 
-    doublet_mode = T
-  }
-  
-  prop <- as.matrix(normalize_weights(myRCTD@results$weights))
-  
-  # ensure order matches
-  pos <- pos[rownames(prop),]
-  counts <- counts[, rownames(prop)]
-  dims = as.data.frame(nrow(counts))
-  write.csv(dims, file = here('sim','ngene_nofiltered', sprintf('%s.csv', dataset)))
-  
-  # save RCTD proportions
-  saveRDS(prop, here('sim','prop', paste0(dataset, '.rds')))
-  
+  cell_type <- apply(prop, 1, function(row) {
+    return(colnames(prop)[which.max(row)])
+  })
+  counts <- as.matrix(counts)
+  pos <- as.matrix(pos)
+  prop <- as.matrix(prop)
   # C-SIDE
   
-  CSIDE.results <- run.CSIDE.nonparam(myRCTD, 
-                                      cell_type_threshold = 0,
-                                      cell_types = names(tail(sort(colSums(prop)),3)), 
-                                      fdr = 0.05, 
-                                      doublet_mode = doublet_mode)
+  puck <- SpatialRNA(coords = as.data.frame(pos), counts = counts)
+  reference <- Reference(counts = counts, cell_types = factor(cell_type), min_UMI = -Inf)
+  ct_tab <- table(reference@cell_types)
+  keep_ct <- names(ct_tab[ct_tab >= 2])
+  cell_type_filter <- cell_type[cell_type %in% keep_ct]
+  reference <- Reference(counts = counts[,names(cell_type_filter)], cell_types = factor(cell_type_filter))
   
-  res.cside <- CSIDE.results@de_results$all_gene_list
-  saveRDS(res.cside, here('sim','res', sprintf('%s-C-SIDE.rds', dataset)))
+  
+  myRCTD <- create.RCTD(spatialRNA = puck, reference = reference, max_cores = ncores,
+                        gene_cutoff = -Inf, fc_cutoff = -Inf, gene_cutoff_reg = -Inf, fc_cutoff_reg = -Inf, UMI_min = -Inf,
+                        UMI_max = Inf, counts_MIN = -Inf, UMI_min_sigma = -Inf, CELL_MIN_INSTANCE = -Inf)
+  myRCTD@config[["MIN_OBS"]] <- -Inf
+  myRCTD@config[["MIN_CHANGE_BULK"]] <- -Inf
+  myRCTD@config[["MIN_CHANGE_REG"]] <- -Inf
+  myRCTD@config[["CONFIDENCE_THRESHOLD"]] <- -Inf
+  # myRCTD <- run.RCTD(RCTD = myRCTD)
+  myRCTD@config$RCTDmode <- "full"
+  myRCTD <- import_weights(myRCTD = myRCTD, weights = prop)
+  
+  # res_cside <- run.CSIDE.nonparam(myRCTD = myRCTD, cell_type_threshold = -Inf, gene_threshold = -Inf, doublet_mode = FALSE, fdr = Inf)
+  
+  CSIDE.results <- tryCatch(
+    {
+      # Core logic: run CSIDE.nonparam while suppressing all warnings
+      suppressWarnings(
+        run.CSIDE.nonparam(
+          myRCTD = myRCTD,
+          cell_type_threshold = 0,
+          cell_types = names(tail(sort(colSums(prop)), 3)),
+          fdr = 0.05,
+          doublet_mode = FALSE
+        )
+      )
+    },
+    # Catch all errors and handle them
+    error = function(e) {
+      # Print error message for debugging (optional)
+      cat("Error caught: ", e$message, "\n", sep = "")
+      # Return a default value to avoid downstream errors
+      NULL
+    }
+  )
+  if (!is.null(CSIDE.results)) {
+    res.cside <- CSIDE.results@de_results$all_gene_list
+  } else {
+    res.cside <- NULL
+  }
+  
+  saveRDS(res.cside,here('sim','res',sprintf('%s-noRCTD-C-SIDE.rds',dataset)))
+  
+  
   
   
   # CELINA
@@ -187,13 +212,13 @@ run_analysis_for_pattern <- function(pt,
   
   Obj <- preprocess_input(Obj, 
                           cell_types_to_test = celltype_to_test,  
-                          scRNA_count = as.matrix(counts.sc), 
-                          sc_cell_type_labels = as.matrix(data.frame(celltypes, row.names = colnames(counts.sc))))
+                          scRNA_count = as.matrix(counts), 
+                          sc_cell_type_labels = as.matrix(data.frame(cell_type, row.names = colnames(counts))))
   
   Obj <- Calculate_Kernel(Obj)
   Obj <- Testing_interaction_all(Obj, num_cores = ncores)
   res.celina <- Obj@result
-  saveRDS(res.celina, here('sim','res', sprintf('%s-CELINA.rds', dataset)))
+  saveRDS(res.celina, here('sim','res', sprintf('%s-noRCTD-CELINA.rds', dataset)))
   
   
   # spVC
@@ -203,10 +228,11 @@ run_analysis_for_pattern <- function(pt,
   results <- test.spVC(Y = counts, X = prop, S = pos, V = V, Tr = Tr,
                        para.cores = ncores)
   
-  saveRDS(results, here('sim','res', sprintf('%s-spVC.rds', dataset)))
+  saveRDS(results, here('sim','res', sprintf('%s-noRCTD-spVC.rds', dataset)))
   
   
   # STANCE
+
   Obj.STANCE <- creatSTANCEobject(counts = counts,
                                   pos = pos,
                                   prop = prop,
@@ -224,7 +250,7 @@ run_analysis_for_pattern <- function(pt,
                        correction = F, ncores = ncores)
   
   res.stance <- mySTANCE@Test_2
-  saveRDS(res.stance, here('sim','res', sprintf('%s-STANCE.rds', dataset)))
+  saveRDS(res.stance, here('sim','res', sprintf('%s-noRCTD-STANCE.rds', dataset)))
   
   
   
@@ -243,8 +269,9 @@ run_analysis_for_pattern <- function(pt,
     top6_ct
   )
   top3_ct <- names(tail(sort(colSums(prop)),3))
-  saveRDS(res.ctsv[top3_ct],here('sim','res',sprintf('%s-CTSV.rds',dataset)))  
+  saveRDS(res.ctsv[top3_ct],here('sim','res',sprintf('%s-noRCTD-CTSV.rds',dataset)))  
   cat(sprintf("Finished pattern %s", pt))
   
   
 }
+    

@@ -1,4 +1,4 @@
-library(spacexr) #C-SIDE
+dlibrary(spacexr) #C-SIDE
 library(spVC)
 library(sp)
 library(BPST)
@@ -12,9 +12,10 @@ library(Matrix)
 library(devtools)
 library(reshape2)
 library(dplyr)
-setwd('~/yh')
-library(here)
 
+setwd("/home/user/Fanglab1/yh/ctSVGbench")
+library(here)
+source('/home/user/Fanglab1/yh/ctSVGbench/real/CTSV.R')
 ncores=20
 
 rotate_points <- function(original_points, angle_degrees) { 
@@ -27,17 +28,13 @@ rotate_points <- function(original_points, angle_degrees) {
 }
 
 datasets <- c(
-  "ST_PDAC",
-  "Visium_spinal",
-  "Slide-seqV2_melanoma",
-  "Visium_skin",
-  "SeqFish+_mouse_cortex_svz",
-  "Visium_bladder",
-  "Visium_tail",
-  "Visium_liver",
-  "SeqFish+_mouse_ob",
-  "StereoSeq_mouseOB"
+  "Slide-seq_tumor",
+  "Slide-seqV2_hippocampus",
+  "Slide-seqV2_mouseOB",
+  "ST_developmental_heart",
+  "Visium_mousebrain"
 )
+
 angles <- c(30,90)
 for (dataset in datasets){
   for (angle_degrees in angles){
@@ -45,8 +42,9 @@ for (dataset in datasets){
     file <- sprintf('myRCTD_%s.rds',dataset)
     puck<- readRDS(here('real','puck',file))
     reference <- readRDS(here('real','reference',file))
-    pos.original <- puck@coords[1:2]
+    pos.original <- readRDS(here('real','pos',file))
     pos <- rotate_points(pos.original, angle_degrees) 
+    print(dim(pos))
     pos <- as.data.frame(pos)  
     counts.orign <- puck@counts
     counts.sc <- reference@counts
@@ -62,6 +60,16 @@ for (dataset in datasets){
       counts = mat
     }
     
+    ncell <- data.frame(table(celltypes))
+  if(any(ncell$Freq<25)){
+    filter_cell <- ncell$celltypes[ncell$Freq<25]    
+    filter_index <- which(celltypes %in% filter_cell )
+    celltypes <- celltypes[-filter_index]
+    new_level <- unique(as.character(celltypes))
+    celltypes <- factor(celltypes, levels = new_level)
+    counts.sc <- counts.sc[,-filter_index]
+  }
+
     puck <- SpatialRNA(coords = pos, counts = counts)
     reference <- Reference(counts = counts.sc, cell_types = as.factor(celltypes), min_UMI = 1) 
     myRCTD <- create.RCTD(puck, reference = reference, max_cores = ncores)
@@ -80,7 +88,7 @@ for (dataset in datasets){
     # prop <- readRDS(here('real','prop',file))
     pos=pos[rownames(prop),]
     counts=counts[,rownames(prop)]
-    
+
     gc1 <- gc(reset = TRUE)
     time = system.time({
       CSIDE.results<- run.CSIDE.nonparam(myRCTD, 
@@ -221,9 +229,27 @@ for (dataset in datasets){
                 file =here('real','computation',sprintf('%s-r%s-STANCE.csv',dataset,angle_degrees)),
                 sep = ',',
                 row.names = FALSE)
-  }                
+                 
+
+  dim(counts)
+  counts <- counts[Matrix::rowSums(counts != 0) > 0, ]  
+
+  spe <- SpatialExperiment(assay = counts, colData = pos, spatialCoordsNames = c('x', 'y')) 
+  CTSV.results <- CTSV(spe, W = prop, num_core = ncores)  
+  cts <- colnames(prop)
+  res.ctsv.matrix <- CTSV.results$pval
+  res.ctsv <- setNames(
+    lapply(seq_along(cts), function(i){
+      data.frame(pval = pmin(res.ctsv.matrix[,i], res.ctsv.matrix[,i+length(cts)]),
+                 row.names = rownames(CTSV.results$qval))
+    }
+    ),
+    cts
+  )
+  top3_ct <- names(tail(sort(colSums(prop)),3))
+  saveRDS(res.ctsv,here('real','res',sprintf('%s-r%s-CTSV.rds',dataset,angle_degrees)))
   
-}
+}}
 
 
 

@@ -10,22 +10,26 @@ library(here)
 library(parallel)
 
 # Create output directories if they don't exist
-dir.create("sim/computation", recursive = TRUE, showWarnings = FALSE)
 dir.create("sim/res", recursive = TRUE, showWarnings = FALSE)
-dir.create("sim/plot", recursive = TRUE, showWarnings = FALSE)
 
-# List of datasets to analyze
 datasets <- c(
   "ST_PDAC",
   "Visium_liver",
   "Visium_mousebrain",
-  "Visium_spleen",
   "StereoSeq_MDESTA",
-  "StereoSeq_CBMSTA_Macaque",
-  "Slide-seqV2_melanoma",
+  "Visium_spleen",
   "SeqFish+_mouse_ob",
-  "StereoSeq_CBMSTA_Marmoset",
-  "Slide-seq_tumor"
+  "Slide-seq_tumor",
+  "Slide-seqV2_hippocampus",
+  "Slide-seqV2_mouseOB", 
+  "Slide-seqV2_melanoma_GSM6025935_MBM05_rep1",
+  "Slide-seqV2_melanoma_GSM6025936_MBM05_rep2",
+  "Slide-seqV2_melanoma_GSM6025937_MBM05_rep3",
+  "Slide-seqV2_melanoma_GSM6025938_MBM06",
+  "Slide-seqV2_melanoma_GSM6025939_MBM07",
+  "Slide-seqV2_melanoma_GSM6025940_MBM08",
+  "Slide-seqV2_melanoma_GSM6025949_ECM08",
+  "Slide-seqV2_melanoma_GSM6025950_ECM10" 
 )
 
 # Source the analysis function
@@ -53,6 +57,7 @@ for (dataset in datasets) {
   
   # Read spatial coordinates and boundary
   pos.use <- readRDS(here('sim','pos', file.orign))
+  colnames(pos.use) <- c("x","y")
   spot <- intersect(rownames(pos.use), rownames(prop.use))
   pos.use <- pos.use[spot, ]
   prop.use <- prop.use[spot, ]
@@ -74,7 +79,7 @@ for (dataset in datasets) {
         # Run the analysis
         run_analysis_for_pattern(
           pt, pos.use, prop.use, dt = dataset, boundary = boundary, 
-          rep_id = rep, paramset = paramset, ncores = 70
+          rep_id = rep, paramset = paramset, ncores = 80
         )
       }
     }

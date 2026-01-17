@@ -24,13 +24,13 @@ library(tidyr)
 library(dplyr)
 library(tidyr)
 library(ggpubr)
-source('F:/ctSVGbench/my_theme.R')
+source('./my_theme.R')
 source('./sim/utils/sim-bench.R')
 
-patterns <- c("pathology","hotspot", "stripe", "gradient",  "periodic", "neighbor")
 
-dataset=  "Visium_skin"
-methods <- c('C-SIDE','spVC','CELINA','STANCE')
+dataset=  "SeqFish+_cortex"
+
+methods <- c('C-SIDE','spVC','CELINA','STANCE',"CTSV","ctsvg")
 
 
 reps <- c(1:100)
@@ -40,6 +40,7 @@ get_wide_pval <- function(dataset,i){
   res.celina=readRDS(here('real','res',sprintf('%s-CELINA-null%s.rds',dataset,i)))
   res.stance=readRDS(here('real','res',sprintf('%s-STANCE-null%s.rds',dataset,i)))
   # res.ctsv=readRDS(here('real','res',sprintf('%s-CTSV.rds',dataset)))
+  res.ctsv=readRDS(here('real','res',sprintf('%s-CTSV-null%s.rds',dataset,i)))
   
   spVC=readRDS(here('real','res',sprintf('%s-spVC-null%s.rds',dataset,i)))
   idx=match(names(res.celina),colnames(prop))
@@ -54,11 +55,25 @@ get_wide_pval <- function(dataset,i){
   
   names(res.spVC) <- names(res.celina)
   
+  ctsvg=readRDS(here('real','res',sprintf('%s-ctsvg-null%s.rds',dataset,i)))
+  if(is.null(ctsvg)){
+    res.ctsvg=ctsvg
+  }else {
+    res.ctsvg <- split(ctsvg, ctsvg$cluster)
+    res.ctsvg <- lapply(res.ctsvg, \(df)
+                        data.frame(
+                          pval = df$pval,
+                          row.names = df$gene
+                        ))
+  }
+  
   all_lists <- list(
     CSIDE = res.cside, 
     spVC = res.spVC, 
     Celina = res.celina, 
-    STANCE = res.stance
+    STANCE = res.stance,
+    CTSV = res.ctsv, 
+    ctSVG=res.ctsvg 
   )
   
   
@@ -207,8 +222,19 @@ p5 <- ggplot(data = FPR, aes(color = Method)) +
   scale_color_manual(values = method_colors)+
   theme_minimal()+
   my_theme +
-  theme(legend.position = "none")
-
+  theme(legend.position = "left",
+  # legend.direction = "horizontal",
+  #   legend.box = "horizontal",     
+    legend.margin = margin(0, 0, 0, 0),
+            legend.key.size = unit(0.05, "in"),
+        legend.key.width = unit(0.05, "in"))+
+  guides(
+    color = guide_legend(
+      ncol = 1,                
+      byrow = TRUE,            
+      title.hjust = 0.5    )
+      
+  )+labs(color="")
 p5
 
 

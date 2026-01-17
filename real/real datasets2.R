@@ -18,8 +18,9 @@ library(devtools)
 library(reshape2)
 library(dplyr)
 library(here)
+source('/home/user/Fanglab1/yh/ctSVGbench/real/CTSV.R')
 
-ncores=96
+ncores=20
 
 datasets <- c(
   "Visium_mousebrain",
@@ -29,10 +30,11 @@ datasets <- c(
   "StereoSeq_MDESTA",
   "Slide-seqV2_melanoma",
   "Visium_lymph_node",
-  "Slide-seq_tumor",
+  "Slide-seq_tumor"
   "Slide-seqV2_hippocampus",
   "StereoSeq_CBMSTA_Macaque",
-  "Slide-seqV2_mouseOB"
+  "Slide-seqV2_mouseOB",
+  "Slide-seqV2_melanoma_GSM6025944_MBM13"
 )
 
 for (dataset in datasets){
@@ -41,8 +43,9 @@ for (dataset in datasets){
   file <- sprintf('myRCTD_%s.rds',dataset)
   puck<- readRDS(here('real','puck',file))
   reference <- readRDS(here('real','reference',file))
+  # reference <- readRDS("/home/user/Fanglab1/yh/ctSVGbench/real/reference/myRCTD_Slide-seqV2_melanoma_MBM.rds")  
   pos <- readRDS(here('real','pos_subset',file))
-  boundary <- readRDS(here('real','boundary_subset',file))
+  boundary <- readRDS(here('real','boundary',file))
   counts.orign <- puck@counts[,rownames(pos)]
   counts.sc <- reference@counts
   celltypes <- reference@cell_types
@@ -68,7 +71,6 @@ for (dataset in datasets){
   }
   reference <- Reference(counts = counts.sc, cell_types = as.factor(celltypes), min_UMI = 1) 
   puck <- SpatialRNA(coords = pos, counts = counts)
-  reference <- Reference(counts = counts.sc, cell_types = as.factor(celltypes), min_UMI = 1) 
   myRCTD <- create.RCTD(puck, reference = reference, max_cores = ncores)
   
   # run RCTD
@@ -82,7 +84,7 @@ for (dataset in datasets){
   
   prop <- as.matrix(normalize_weights(myRCTD@results$weights))
   saveRDS(prop,here('real','prop',file))
-  # prop <- readRDS(here('real','prop',file))
+  prop <- readRDS(here('real','prop',file))
   pos=pos[rownames(prop),]
   counts=counts[,rownames(prop)]
   gc1 <- gc(reset = TRUE)
@@ -177,6 +179,8 @@ for (dataset in datasets){
               row.names = FALSE)
   
   ### Create STANCE object ---
+  ncores=70
+
   gc1 <- gc(reset = TRUE)
   time = system.time({
     Obj.STANCE<- creatSTANCEobject(counts = counts,
@@ -217,6 +221,25 @@ for (dataset in datasets){
               file =here('real','computation',sprintf('%s-STANCE.csv',dataset)),
               sep = ',',
               row.names = FALSE)
+
+#fit the CTSV model 
+  spe <- SpatialExperiment(assay = counts[,rownames(prop)], colData = pos[rownames(prop),], spatialCoordsNames = c('x', 'y')) 
+
+  CTSV.results <- CTSV(spe, W = as.matrix(prop), num_core = ncores) 
+  res.ctsv.matrix <- CTSV.results$pval
+  res.ctsv <- setNames(
+    lapply(seq_along(colnames(prop)), function(i){
+       data.frame(pval = pmin(res.ctsv.matrix[,i], res.ctsv.matrix[,i+ncol(prop)]),
+                 row.names = rownames(CTSV.results$qval))
+    }
+    ),
+    colnames(prop)
+  )
+  ct_total <- colSums(prop)
+  top3_ct <- head(names(sort(ct_total, decreasing = TRUE)),3)
+
+  saveRDS(res.ctsv[top3_ct],here('real','res',sprintf('%s-CTSV.rds',dataset)))  
+
 }                
 
 

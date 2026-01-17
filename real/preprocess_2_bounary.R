@@ -32,8 +32,19 @@ pos <- puck@coords
   ggplot(pos,aes(x=x,y=y))+
     geom_point()
   ggsave(here('real','coord',gsub('.rds','.pdf',file)))
- 
-saveRDS(pos,file=here('real','pos',file))})
+saveRDS(pos,file=here('real','pos',file))
+})
+
+
+for(file in files){
+  dataset=gsub('myRCTD_|.rds',"",file)
+puck<- readRDS(here('real','puck',file))
+pos <- puck@coords
+  ggplot(pos,aes(x=x,y=y))+
+    geom_point()
+  ggsave(here('real','coord',gsub('.rds','.pdf',file)))
+  saveRDS(pos,file=here('real','pos',file))
+}  
 
 
 ##get boundary

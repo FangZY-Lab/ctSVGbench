@@ -6,6 +6,9 @@ library(RColorBrewer)
 # Define methods and corresponding colors
 methods <- c("C-SIDE", "Celina", "STANCE","spVC")
 colors <- c("#0073C2FF","#EFC000FF","#CD534CFF","#868686FF")
+
+methods <- c("C-SIDE", "Celina", "spVC", "STANCE","CTSV","ctSVG")
+colors <- c("#0073C2FF","#EFC000FF","#868686FF","#CD534CFF","#7AA6DCFF","#003C67FF")
 method_colors <- setNames(colors, methods)
 
 my_theme <- theme(
