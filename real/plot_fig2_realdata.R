@@ -103,10 +103,9 @@ dataset_order <- data %>%
   arrange(resolution, count) %>%  
   pull(dataset)
 
-# 3. 将dataset列转换为因子，使用新的排序
 svnum.df$dataset <- factor(svnum.df$dataset, levels = dataset_order)
 
-n <- length(unique(svnum.df$dataset))  # 23 datasets
+n <- length(unique(svnum.df$dataset))  
 my_colors <- colorRampPalette(brewer.pal(12, "Set3"))(n)
 ds_levels <- levels(svnum.df$dataset)
 
