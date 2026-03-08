@@ -18,24 +18,25 @@ library(ggrepel)
 library(here)
 library(tibble)
 library(pROC)
+library(stringr)
 library(aplot)
 library(RColorBrewer)
 
 # Load custom theme and simulation functions
 source('./my_theme.R')
-source('./sim/utils/sim-bench.R')
-source('./sim/utils/sim-bench-nodeconv.R')
+source('./sim/utils/sim-bench-sc.R')
+# source('./sim/utils/sim-bench-nodeconv.R')
 
-
+paramset = 'P1'
 # Define datasets and patterns
+
 dts <- c(
-  "ST_PDAC",
-  "Visium_mousebrain",
   "StereoSeq_MDESTA",
   "Slide-seq_tumor",
   "Slide-seqV2_hippocampus",
-  "StereoSeq_CBMSTA_Macaque"
-)
+  "SeqFish+_mouse_ob",
+  "Slide-seqV2_melanoma_GSM6025938_MBM06"
+  )
 
 patterns <- c("pathology","hotspot", "stripe", "gradient",  "periodic", "neighbor")
 
@@ -66,7 +67,7 @@ auc_nodcv <- do.call(rbind, lapply(dts, function(dt) {
   do.call(rbind, lapply(patterns, function(pt) {
     dataset <- sprintf("sim_%s-%s-%s-rep1-noRCTD", dt, pt, paramset)
     print(dataset)
-    res <- get_pvalue_wide(dataset, svg_id)
+    res <- get_pvalue_wide2(dataset, svg_id)
     dat.pval.wide <- res$dat.pval.wide
     label <- res$label[rownames(dat.pval.wide)]
     scores <- sapply(dat.pval.wide, function(pred) {
@@ -133,7 +134,7 @@ auc <- auc %>%
                           levels = celina_auc %>% arrange(desc(mean_auc)) %>% pull(pattern)))
 
 auc$dt <- recode(auc$dt, "StereoSeq_CBMSTA_Macaque" = "StereoSeq_CBMSTA_Maca")
-auc$methods <- factor(auc$methods,levels = c("C-SIDE","spVC", "Celina", "STANCE","CTSV"))
+auc$methods <- factor(auc$methods,levels = c("spVC_2","spVC_1","C-SIDE", "Celina", "STANCE","CTSV","ctSVG"))
 auc$pattern <- stringr::str_to_sentence(auc$pattern)
 # ---- Plot AUC heatmap ----
 
@@ -152,55 +153,42 @@ ggsave('Fig/s/noRCTD.pdf',width = 6.69,height = 9)
 
 source('./sim/utils/calc_false_positive_rate.R')
 
-dts_sim <- c(
-  "ST_PDAC",
-  "Visium_mousebrain",
-  "StereoSeq_MDESTA",
-  "Slide-seq_tumor",
-  "Slide-seqV2_hippocampus",
-  "StereoSeq_CBMSTA_Macaque"
-)
 
-fpr_df_norctd <- do.call(rbind, lapply(dts_sim, function(dt) {
+fpr_df_norctd <- do.call(rbind, lapply(dts, function(dt) {
   do.call(rbind, lapply(patterns, function(pt) {
     dataset <- sprintf("sim_%s-%s-%s-rep1-noRCTD", dt, pt, paramset)
-    res <- get_pvalue_wide(dataset, svg_id)
-    fpr <- calc_false_positive_rate(res$dat.pval.wide, alpha = 0.05)
+    res <- get_pvalue_wide2(dataset, svg_id)
+    fpr <- calc_false_positive_rate(res$dat.pval.wide, alpha = 0.1)
     fpr$dataset <- dataset
     fpr$pattern <-pt 
     fpr
   }))
 }))
 
-fpr_df_rctd <- do.call(rbind, lapply(dts_sim, function(dt) {
+fpr_df_rctd <- do.call(rbind, lapply(dts, function(dt) {
   do.call(rbind, lapply(patterns, function(pt) {
     dataset <- sprintf("sim_%s-%s-%s-rep1", dt, pt, paramset)
     res <- get_pvalue_wide(dataset, svg_id)
-    fpr <- calc_false_positive_rate(res$dat.pval.wide, alpha = 0.05)
+    fpr <- calc_false_positive_rate(res$dat.pval.wide, alpha = 0.1)
     fpr$dataset <- dataset
     fpr$pattern <-pt 
     fpr
   }))
 }))
-fpr_df_rctd$dcv  <- 'yes'
-fpr_df_norctd$dcv  <- 'no'
+fpr_df_rctd$dcv  <- 'Using RCTD deconvolution'
+fpr_df_norctd$dcv  <- 'Using true celltype proportion'
 fpr_df_dcv <- rbind(fpr_df_rctd,fpr_df_norctd)
-library(ggplot2)
-library(dplyr)
-library(stringr)
 
 fpr_df_dcv <- fpr_df_dcv %>%
   mutate(pattern = factor(pattern,levels=patterns))
 
 head(fpr_df_dcv)
-library(dplyr)
-library(ggplot2)
-library(tidyr)
-fpr_plot_dcv <- fpr_df_dcv
+fpr_plot_dcv <- subset(fpr_df_dcv,celltype==4)
 
-ggplot(fpr_plot_dcv, aes(x = method, y = fpr, fill = dcv, group = interaction(method, dcv))) +
+ggplot(fpr_plot_dcv, aes(x = method, y = fpr, fill = gene_class, group = interaction(method, gene_class))) +
   geom_boxplot() +
-  facet_wrap(~pattern, ncol = 3) +  
+  # facet_wrap(~pattern, ncol = 3) +  
+  facet_wrap(~dcv,ncol = 2)+
   geom_hline(yintercept = 0.05, linetype = "dashed", color = "red") +  
   labs(y = "FPR", x = "Methods", fill = "Using RCTD deconvolution") +
   scale_fill_manual(values = c("#FDB462", "#B3DE69")) +
@@ -212,6 +200,8 @@ ggplot(fpr_plot_dcv, aes(x = method, y = fpr, fill = dcv, group = interaction(me
     legend.text = element_text(size = 5)
   ) +
   coord_cartesian(ylim = c(0, 0.2)) +  
-  theme(legend.position = "right")
+  theme(legend.position = "right")+
+  labs(fill="Gene class")
 
 ggsave('Fig/s/affect_dcv_boxplot.pdf', width = 6.69, height = 3, dpi = 300)
+

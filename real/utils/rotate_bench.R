@@ -1,19 +1,19 @@
-
 get_wide_pval <- function(dataset,method){
-  if(method  %in% c('C-SIDE','CELINA','STANCE','CTSV')){
+  if(method  %in% c('C-SIDE','CELINA','STANCE','CTSV','spVC_1','spVC_2')){
     
-    res.o <- readRDS(here('real','res',sprintf('%s-r0-%s.rds',dataset,method)))
-    res.r30 <- readRDS(here('real','res',sprintf('%s-r30-%s.rds',dataset,method)))
-    # res.r60 <- readRDS(here('real','res',sprintf('%s-r60-%s.rds',dataset,method)))
-    res.r90 <- readRDS(here('real','res',sprintf('%s-r90-%s.rds',dataset,method)))
+    res.o <- readRDS(here('real_o','res',sprintf('%s-r0-%s.rds',dataset,method)))
+    res.r30 <- readRDS(here('real_o','res',sprintf('%s-r30-%s.rds',dataset,method)))
+    # res.r60 <- readRDS(here('real_o','res',sprintf('%s-r60-%s.rds',dataset,method)))
+    res.r90 <- readRDS(here('real_o','res',sprintf('%s-r90-%s.rds',dataset,method)))
+  }
+  # else if(method %in% c('spVC_1','spVC_2')){
     
-  }else if(method=='spVC'){
-    
-    res.o <- pre.res(dataset,method,angle=0)
-    res.r30 <- pre.res(dataset,method,angle=30)
-    # res.r60 <- pre.res(dataset,method,angle=60)
-    res.r90 <- pre.res(dataset,method,angle=90)
-  }else if(method=='ctsvg'){
+  #   res.o <- pre.res(dataset,method,angle=0)
+  #   res.r30 <- pre.res(dataset,method,angle=30)
+  #   # res.r60 <- pre.res(dataset,method,angle=60)
+  #   res.r90 <- pre.res(dataset,method,angle=90)
+  # }
+  else if(method=='ctsvg'){
 
     res.o <- pre.ctsvg(dataset,angle=0)
     res.r30 <- pre.ctsvg(dataset,angle=30)
@@ -147,16 +147,16 @@ get_conc<- function(dat,dataset=dataset,method=method) {
 }
 
 pre.res <- function(dataset,method,angle=0){
-  prop <- readRDS(here('real','prop',sprintf('myRCTD_%s.rds',dataset))) 
-  res.celina <- readRDS(here('real','res',sprintf('%s-CELINA.rds',dataset)))
+  prop <- readRDS(here('real_o','prop',sprintf('myRCTD_%s.rds',dataset))) 
+  res.celina <- readRDS(here('real_o','res',sprintf('%s-r0-CELINA.rds',dataset)))
   if(angle==0){
-    file=here('real','res',sprintf('%s-r0-spVC.rds',dataset))
+    file=here('real_o','res',sprintf('%s-r0-%s.rds',dataset,method))
   }else if(angle==30){
-    file=here('real','res',sprintf('%s-r30-%s.rds',dataset,method))
+    file=here('real_o','res',sprintf('%s-r30-%s.rds',dataset,method))
   }else if(angle==60){
-    file=here('real','res',sprintf('%s-r60-%s.rds',dataset,method))
+    file=here('real_o','res',sprintf('%s-r60-%s.rds',dataset,method))
   }else if(angle==90){
-    file=here('real','res',sprintf('%s-r90-%s.rds',dataset,method))
+    file=here('real_o','res',sprintf('%s-r90-%s.rds',dataset,method))
   }
   
   spVC=readRDS(file)
@@ -178,13 +178,13 @@ pre.res <- function(dataset,method,angle=0){
 pre.ctsvg <- function(dataset,angle=0){
   method="ctsvg"
     if(angle==0){
-    file=here('real','res',sprintf('%s-r0-%s.rds',dataset,method))
+    file=here('real_o','res',sprintf('%s-r0-%s.rds',dataset,method))
   }else if(angle==30){
-    file=here('real','res',sprintf('%s-r30-%s.rds',dataset,method))
+    file=here('real_o','res',sprintf('%s-r30-%s.rds',dataset,method))
   }else if(angle==60){
-    file=here('real','res',sprintf('%s-r60-%s.rds',dataset,method))
+    file=here('real_o','res',sprintf('%s-r60-%s.rds',dataset,method))
   }else if(angle==90){
-    file=here('real','res',sprintf('%s-r90-%s.rds',dataset,method))
+    file=here('real_o','res',sprintf('%s-r90-%s.rds',dataset,method))
   }
   
   ctsvg=readRDS(file)

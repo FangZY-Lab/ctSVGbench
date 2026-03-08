@@ -61,15 +61,15 @@ for (dataset in datasets){
     }
     
     ncell <- data.frame(table(celltypes))
-  if(any(ncell$Freq<25)){
-    filter_cell <- ncell$celltypes[ncell$Freq<25]    
-    filter_index <- which(celltypes %in% filter_cell )
-    celltypes <- celltypes[-filter_index]
-    new_level <- unique(as.character(celltypes))
-    celltypes <- factor(celltypes, levels = new_level)
-    counts.sc <- counts.sc[,-filter_index]
-  }
-
+    if(any(ncell$Freq<25)){
+      filter_cell <- ncell$celltypes[ncell$Freq<25]    
+      filter_index <- which(celltypes %in% filter_cell )
+      celltypes <- celltypes[-filter_index]
+      new_level <- unique(as.character(celltypes))
+      celltypes <- factor(celltypes, levels = new_level)
+      counts.sc <- counts.sc[,-filter_index]
+    }
+    
     puck <- SpatialRNA(coords = pos, counts = counts)
     reference <- Reference(counts = counts.sc, cell_types = as.factor(celltypes), min_UMI = 1) 
     myRCTD <- create.RCTD(puck, reference = reference, max_cores = ncores)
@@ -88,7 +88,7 @@ for (dataset in datasets){
     # prop <- readRDS(here('real','prop',file))
     pos=pos[rownames(prop),]
     counts=counts[,rownames(prop)]
-
+    
     gc1 <- gc(reset = TRUE)
     time = system.time({
       CSIDE.results<- run.CSIDE.nonparam(myRCTD, 
@@ -155,9 +155,38 @@ for (dataset in datasets){
                 sep = ',',
                 row.names = FALSE)
     
+    #fit the spVC model(1 step)
     
-    #Sys.setenv(OPENBLAS_NUM_THREADS = "96")
-    #fit the spVC model
+    gc1 <- gc(reset = TRUE)
+    time = system.time({
+      boundary <- readRDS(here('real','boundary',file))
+      boundary.r <- rotate_points(boundary, angle_degrees = angle_degrees)
+      Tr.cell <- TriMesh(boundary.r, n = 2) # n : triangulation fineness
+      V <- as.matrix(Tr.cell$V) 
+      Tr <- as.matrix(Tr.cell$Tr)  
+      # Fit the spVC models
+      results <- test.spVC(Y = counts, X = prop, S = pos, V = V, Tr = Tr,
+                           para.cores = ncores, twostep = FALSE)})
+    
+    gc2 <- gc()
+    
+    saveRDS(results,here('real','res',sprintf('%s-r%s-spVC_1.rds',dataset,angle_degrees)))
+    
+    computation = data.frame(
+      time = time[['elapsed']],
+      n_spot = ncol(counts),
+      n_gene = nrow(counts),
+      dataset = dataset,
+      Peak_RAM_Used_MiB = sum(gc2[,6] - gc1[,6]),
+      method = "spVC"
+    )
+    
+    write.table(computation, 
+                file =here('real','computation',sprintf('%s-r%s-spVC_1.csv',dataset,angle_degrees)),
+                sep = ',',
+                row.names = FALSE)    
+    
+    #fit the spVC model(2 step)
     gc1 <- gc(reset = TRUE)
     time = system.time({
       boundary <- readRDS(here('real','boundary',file))
@@ -171,7 +200,7 @@ for (dataset in datasets){
     
     gc2 <- gc()
     
-    saveRDS(results,here('real','res',sprintf('%s-r%s-spVC.rds',dataset,angle_degrees)))
+    saveRDS(results,here('real','res',sprintf('%s-r%s-spVC_2.rds',dataset,angle_degrees)))
     
     computation = data.frame(
       time = time[['elapsed']],
@@ -183,7 +212,7 @@ for (dataset in datasets){
     )
     
     write.table(computation, 
-                file =here('real','computation',sprintf('%s-r%s-spVC.csv',dataset,angle_degrees)),
+                file =here('real','computation',sprintf('%s-r%s-spVC_2.csv',dataset,angle_degrees)),
                 sep = ',',
                 row.names = FALSE)
     
@@ -229,28 +258,27 @@ for (dataset in datasets){
                 file =here('real','computation',sprintf('%s-r%s-STANCE.csv',dataset,angle_degrees)),
                 sep = ',',
                 row.names = FALSE)
-                 
-
-  dim(counts)
-  counts <- counts[Matrix::rowSums(counts != 0) > 0, ]  
-
-  spe <- SpatialExperiment(assay = counts, colData = pos, spatialCoordsNames = c('x', 'y')) 
-  CTSV.results <- CTSV(spe, W = prop, num_core = ncores)  
-  cts <- colnames(prop)
-  res.ctsv.matrix <- CTSV.results$pval
-  res.ctsv <- setNames(
-    lapply(seq_along(cts), function(i){
-      data.frame(pval = pmin(res.ctsv.matrix[,i], res.ctsv.matrix[,i+length(cts)]),
-                 row.names = rownames(CTSV.results$qval))
-    }
-    ),
-    cts
-  )
-  top3_ct <- names(tail(sort(colSums(prop)),3))
-  saveRDS(res.ctsv,here('real','res',sprintf('%s-r%s-CTSV.rds',dataset,angle_degrees)))
-  
-}}
-
+    
+    
+    dim(counts)
+    counts <- counts[Matrix::rowSums(counts != 0) > 0, ]  
+    
+    spe <- SpatialExperiment(assay = counts, colData = pos, spatialCoordsNames = c('x', 'y')) 
+    CTSV.results <- CTSV(spe, W = prop, num_core = ncores)  
+    cts <- colnames(prop)
+    res.ctsv.matrix <- CTSV.results$pval
+    res.ctsv <- setNames(
+      lapply(seq_along(cts), function(i){
+        data.frame(pval = pmin(res.ctsv.matrix[,i], res.ctsv.matrix[,i+length(cts)]),
+                   row.names = rownames(CTSV.results$qval))
+      }
+      ),
+      cts
+    )
+    top3_ct <- names(tail(sort(colSums(prop)),3))
+    saveRDS(res.ctsv,here('real','res',sprintf('%s-r%s-CTSV.rds',dataset,angle_degrees)))
+    
+  }}
 
 
 

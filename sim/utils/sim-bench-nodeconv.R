@@ -13,40 +13,78 @@ svg_id <- c(paste0("celltype5","gene",1:75),paste0("celltype6","gene",76:150),
             paste0("celltype5","gene",151:200),paste0("celltype6","gene",151:200))
 
 ### get_pvalue_wide ---
-get_pvalue_wide_nodcv <- function(dataset,svg_id){
+get_pvalue_wide_nodcv <- function(dataset,svg_id,cell.level=F){
   
-  res.cside <- readRDS(here('sim','res',sprintf('%s-noRCTD-C-SIDE.rds',dataset)))
-  res.celina <- readRDS(here('sim','res',sprintf('%s-noRCTD-CELINA.rds',dataset)))
-  res.stance <- readRDS(here('sim','res',sprintf('%s-noRCTD-STANCE.rds',dataset)))
+  res.cside=readRDS(here('sim','res',sprintf('%s-noRCTD-C-SIDE.rds',dataset)))
+  res.celina=readRDS(here('sim','res',sprintf('%s-noRCTD-CELINA.rds',dataset)))
+  res.stance=readRDS(here('sim','res',sprintf('%s-noRCTD-STANCE.rds',dataset)))
   res.ctsv <- readRDS(here("sim","res", sprintf("%s-noRCTD-CTSV.rds", dataset)))
-
-  spVC=readRDS(here('sim','res',sprintf('%s-noRCTD-spVC.rds',dataset)))
-  idx=gsub("celltype","",names(res.celina))
   
-  genes.v=names(spVC$results.varying)
-  res.spVC <- lapply(idx,function(ct){
-    pval=sapply(spVC$results.varying[genes.v],function(x){
-      x$p.value[paste0("gamma_X", ct)]
-    })
-    names(pval)=sapply(strsplit(names(pval),"\\."),"[[",1)
-    data.frame(pval = na.omit(pval))
-  })
-  
-  names(res.spVC) <- names(res.celina)
-  
-  all_lists <- list(
-    CSIDE = res.cside, 
-    spVC = res.spVC, 
-    Celina = res.celina, 
-    STANCE = res.stance,
-    CTSV = res.ctsv
+  spVC=readRDS(here('sim','res',sprintf('%s-noRCTD-spVC_2.rds',dataset)))
+  if(is.null(spVC)){
+    res.spVC=spVC
+  }else {
+    idx=match(names(res.celina),paste0("celltype",1:6))
+    genes.v=names(spVC$results.varying)
+    res.spVC <- lapply(idx,function(ct){
+      pval=sapply(spVC$results.varying[genes.v],function(x){
+        x$p.value[paste0("gamma_X", ct)]
+      })
+      names(pval)=sapply(strsplit(names(pval),"\\."),"[[",1)
+      data.frame(pval = na.omit(pval))
+    })    
+    names(res.spVC) <- names(res.celina)
     
-  )
+  }
+  spVC_1=readRDS(here('sim','res',sprintf('%s-noRCTD-spVC_1.rds',dataset)))
+  if(is.null(spVC_1)){
+    res.spVC_1=spVC_1
+  }else {
+    idx=match(names(res.celina),paste0("celltype",1:6))
+    genes.v=names(spVC_1$results.full)
+    res.spVC_1 <- lapply(idx,function(ct){
+      pval=sapply(spVC_1$results.full[genes.v],function(x){
+        x$p.value[paste0("gamma_X", ct)]
+      })
+      names(pval)=sapply(strsplit(names(pval),"\\."),"[[",1)
+      data.frame(pval = na.omit(pval))
+    })    
+    names(res.spVC_1) <- names(res.celina)
+  }
+  if(cell.level==TRUE){
+    ctsvg=readRDS(here('sim','res',sprintf('%s-noRCTD-ctsvg.rds',dataset)))
+    if(is.null(ctsvg)){
+      res.ctsvg=ctsvg
+    }else {
+      res.ctsvg <- split(ctsvg, ctsvg$cluster)
+      res.ctsvg <- lapply(res.ctsvg, \(df)
+                          data.frame(
+                            pval = df$pval,
+                            row.names = df$gene
+                          ))
+    }
+    
+    all_lists <- list(
+      CSIDE = res.cside, 
+      spVC_2 = res.spVC, 
+      spVC_1 = res.spVC_1,
+      Celina = res.celina, 
+      STANCE = res.stance,
+      CTSV = res.ctsv, 
+      ctSVG=res.ctsvg 
+    )
+  }else {
+    all_lists <- list(
+      CSIDE = res.cside, 
+      spVC_2 = res.spVC, 
+      spVC_1 = res.spVC_1,
+      Celina = res.celina, 
+      STANCE = res.stance,
+      CTSV = res.ctsv  
+    )
+  }  
+  all_genes <- paste0("gene", 1:1200)
   
-  
-  all_genes <- unique(unlist(lapply(all_lists, function(lst) {
-    unlist(lapply(lst, rownames))
-  })))
   
   dat.pval <- do.call(rbind,lapply(names(all_lists),function(method){
     

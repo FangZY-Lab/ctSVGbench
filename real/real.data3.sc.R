@@ -54,7 +54,7 @@ for (dataset in datasets){
   file <- sprintf('myRCTD_%s.rds',dataset)
   puck<- readRDS(here('real','puck',file))
   reference <- readRDS(here('real','reference',file))
-  pos <- readRDS(here('real','pos_subset',file))
+  pos <- readRDS(here('real','pos',file))
   counts.orign <- puck@counts[,rownames(pos)]
   counts.sc <- reference@counts
   celltypes <- reference@cell_types
@@ -95,7 +95,7 @@ for (dataset in datasets){
   saveRDS(prop,here('real','prop',file))
   
   prop <- readRDS(here('real','prop',file))
-
+  
   
   ct_total <- colSums(prop)
   top3_ct <- names(sort(ct_total, decreasing = TRUE))[1:3]
@@ -112,7 +112,7 @@ for (dataset in datasets){
     return(colnames(prop_top3)[which.max(row)])
   })
   
-  ### Create C-SIDE object ---
+  ## Create C-SIDE object ---
   puck <- SpatialRNA(coords = as.data.frame(pos), counts = counts)
   reference <- Reference(counts = counts, cell_types = factor(cell_type), min_UMI = -Inf)
   ct_tab <- table(reference@cell_types)
@@ -184,8 +184,6 @@ for (dataset in datasets){
   saveRDS(res.celina,here('real','res',sprintf('%s-CELINA.rds',dataset)))
   
   ### Create STANCE object ---
-  ncores=96
-  
   Obj.STANCE<- creatSTANCEobject(counts = counts,
                                  pos = pos,
                                  prop = prop_top3,
@@ -249,7 +247,7 @@ for (dataset in datasets){
   saveRDS(res.ctsvg,here('real','res',sprintf('%s-ctsvg.rds',dataset)))
   
   
-  #fit the spVC model
+  #fit the spVC model (2-step)
   boundary <- readRDS(here('real','boundary',file))
   Tr.cell <- TriMesh(boundary, n = 2) # n : triangulation fineness
   V <- as.matrix(Tr.cell$V) 
@@ -276,8 +274,38 @@ for (dataset in datasets){
     }
   )
   
-  saveRDS(res.spvc,here('real','res',sprintf('%s-spVC.rds',dataset)))
+  saveRDS(res.spvc,here('real','res',sprintf('%s-spVC_2.rds',dataset)))
   
+  
+  #fit the spVC model (1-step)
+  boundary <- readRDS(here('real','boundary',file))
+  Tr.cell <- TriMesh(boundary, n = 2) # n : triangulation fineness
+  V <- as.matrix(Tr.cell$V) 
+  Tr <- as.matrix(Tr.cell$Tr)  
+  
+  # Fit the spVC models safely
+  res.spvc <- tryCatch(
+    {
+      suppressWarnings(
+        test.spVC(
+          Y = counts,
+          X = prop_top3,
+          S = pos,
+          V = V,
+          Tr = Tr,
+          para.cores = ncores,
+          twostep =F
+        )
+      )
+      
+    },
+    error = function(e) {
+      message("test.spVC failed: ", e$message)
+      NULL
+    }
+  )
+  
+  saveRDS(res.spvc,here('real','res',sprintf('%s-spVC_1.rds',dataset)))
   
   #fit the CTSV model 
   spe <- SpatialExperiment(assay = counts[,rownames(prop_top3)], colData = pos[rownames(prop_top3),], spatialCoordsNames = c('x', 'y')) 
@@ -285,11 +313,13 @@ for (dataset in datasets){
   res.ctsv.matrix <- CTSV.results$pval
   res.ctsv <- setNames(
     lapply(seq_along(top3_ct), function(i){
-       data.frame(pval = pmin(res.ctsv.matrix[,i], res.ctsv.matrix[,i+length(top3_ct)]),
+      data.frame(pval = pmin(res.ctsv.matrix[,i], res.ctsv.matrix[,i+length(top3_ct)]),
                  row.names = rownames(CTSV.results$qval))
     }
     ),
     top3_ct
   )
   saveRDS(res.ctsv,here('real','res',sprintf('%s-CTSV.rds',dataset)))
+  
+  
 }

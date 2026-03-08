@@ -2,7 +2,6 @@ library(ggplot2)
 library(scales)
 library(here)
 library(tidyr)
-library(dplyr)
 library(tibble)
 library(tidyverse)
 library(data.table)
@@ -12,6 +11,7 @@ library(ggpubr)
 library(ggtext)
 library(ggprism)
 library(ggpmisc)
+library(dplyr)
 source(here('real','utils',"rotate_bench.R"))
 source('./my_theme.R')
 
@@ -22,9 +22,11 @@ datasets <- c(
   "ST_developmental_heart",
   "Visium_mousebrain"
 )
+methods <- c('C-SIDE','spVC_2','spVC_1','CELINA','STANCE','CTSV')#
+method_levels <- c("spVC_1","spVC_2","C-SIDE", "Celina", "STANCE","CTSV","ctSVG")
 
 for (dataset in datasets){
-  methods <- c('C-SIDE','spVC','CELINA','STANCE','CTSV')
+  methods <- c('C-SIDE','spVC_2','spVC_1','CELINA','STANCE','CTSV')#
   
   conc.res <- do.call(rbind,lapply(methods,function(method){
     dat.pval.wide <- get_wide_pval(dataset,method)
@@ -34,10 +36,8 @@ for (dataset in datasets){
   
   conc.res <- conc.res %>%
     mutate(method = recode(method,
-                           "C-SIDE" = "C-SIDE",
-                           "CELINA" = "Celina",
-                           "STANCE" = "STANCE",
-                           "spVC" = "spVC"))
+                           "CELINA" = "Celina"
+                          ))
   
   bin_size <- 5  # Change this to 50 if you want bins of 50 ranks instead of 5
   conc.res$rank_bin <- floor((conc.res$rank - 1) / bin_size) + 1
@@ -53,6 +53,7 @@ for (dataset in datasets){
   conc.res$rank_bin_label <- factor(conc.res$rank_bin_label, 
                                     levels = unique(conc.res$rank_bin_label))
   
+  conc.res$method <- factor(conc.res$method,levels = method_levels)
   conc.res1 <- subset(conc.res,rank<30)                                  
   p1 <- ggplot(conc.res1, aes(x = rank_bin_label, y = conc, fill = method)) +
     stat_summary(fun = mean, geom = "bar", 
@@ -98,8 +99,7 @@ library(dplyr)
 library(data.table)
 
 conc.all <- lapply(datasets, function(dataset) {
-  methods <- c('C-SIDE','spVC','CELINA','STANCE','CTSV')
-  
+
   conc.res <- do.call(rbind, lapply(methods, function(method) {
     dat.pval.wide <- get_wide_pval(dataset, method)
     data <- get_conc(dat.pval.wide, dataset = dataset, method = method)
@@ -128,8 +128,10 @@ conc.df <- rbindlist(conc.all, idcol = NULL)
 library(ggplot2)
 library(viridis)
 library(data.table)
-conc.df$method <- factor(conc.df$method,levels = c("C-SIDE","spVC", "Celina", "STANCE",'CTSV'))
-# Heatmap of mean concordance across datasets
+
+conc.df$method <- factor(conc.df$method,levels = method_levels)
+
+
 p1 <- ggplot(conc.df, aes(x = method, y = datasets, fill = mean_conc)) +
   geom_tile(color = "white", linewidth = 1) +
   geom_text(aes(label = round(mean_conc, 3)), size = 2) +
@@ -150,12 +152,15 @@ p1 <- ggplot(conc.df, aes(x = method, y = datasets, fill = mean_conc)) +
   labs(y="Datasets",x="Methods")+
   theme(
     strip.text = element_text(size = 7),
+    axis.text.x = element_text(size = 6),
     panel.grid = element_blank()
   )
-ggsave('Fig/fig4-spot.pdf')
 p1
 
-
+summary_df_rob2 <- conc.df %>%
+  group_by(method) %>%
+  summarise(Concordance = mean(mean_conc, na.rm = TRUE)) %>% 
+  column_to_rownames('method')
 
 # Similarity calculation function
 calc_similarity <- function(dat.pval.wide,
@@ -210,15 +215,6 @@ calc_similarity <- function(dat.pval.wide,
   return(result)
 }
 
-methods <- c('C-SIDE','spVC','CELINA','STANCE','CTSV')
-datasets <- c(
-  "Slide-seq_tumor",
-  "Slide-seqV2_hippocampus",
-  "Slide-seqV2_mouseOB",
-  "ST_developmental_heart",
-  "Visium_mousebrain"
-)
-source(here('real','utils',"rotate_bench.R"))
 
 cor.res <- expand.grid(dataset = datasets, method = methods, stringsAsFactors = FALSE) %>%
   pmap_dfr(function(dataset, method) {
@@ -227,7 +223,7 @@ cor.res <- expand.grid(dataset = datasets, method = methods, stringsAsFactors = 
     
     as.data.frame(as.table(data$cor)) %>%
       na.omit() %>%
-      rename(angle1 = Var1, angle2 = Var2, correlation = Freq) %>%
+      dplyr::rename(angle1 = Var1, angle2 = Var2, correlation = Freq) %>%
       mutate(dataset = dataset, method = method)
   })
 
@@ -238,7 +234,7 @@ jac.alpha.res <- expand.grid(dataset = datasets, method = methods, stringsAsFact
     
     as.data.frame(as.table(data$jaccard)) %>%
       na.omit() %>% 
-      rename(angle1 = Var1, angle2 = Var2, jaccard = Freq) %>%
+      dplyr::rename(angle1 = Var1, angle2 = Var2, jaccard = Freq) %>%
       mutate(dataset = dataset,method = method)
   })
 
@@ -249,7 +245,7 @@ jac.top50.res <- expand.grid(dataset = datasets, method = methods, stringsAsFact
     
     as.data.frame(as.table(data$jaccard)) %>%
       na.omit() %>% 
-      rename(angle1 = Var1, angle2 = Var2, jaccard = Freq) %>%
+      dplyr::rename(angle1 = Var1, angle2 = Var2, jaccard = Freq) %>%
       mutate(dataset = dataset,method = method)
   })
 
@@ -257,9 +253,9 @@ head(cor.res)
 
 # Combine results for visualization
 plot.df <- bind_rows(
-  jac.alpha.res %>% rename(value = jaccard) %>% mutate(metric = "Jaccard_alpha"),
-  jac.top50.res %>% rename(value = jaccard) %>% mutate(metric = "Jaccard_top50"),
-  cor.res %>% rename(value = correlation) %>% mutate(metric = "Correlation")
+  jac.alpha.res %>% dplyr::rename(value = jaccard) %>% mutate(metric = "Jaccard_alpha"),
+  jac.top50.res %>% dplyr::rename(value = jaccard) %>% mutate(metric = "Jaccard_top50"),
+  cor.res %>% dplyr::rename(value = correlation) %>% mutate(metric = "Correlation")
 )
 
 plot.df <- plot.df %>%
@@ -279,6 +275,8 @@ rank.df <- plot.df %>%
 rank.count <- rank.df %>%
   group_by(metric, method, rank) %>%
   summarise(count = n(), .groups = "drop")
+
+rank.count$method <- factor(rank.count$method,levels = method_levels)
 
 p2 <- ggplot(rank.count, aes(x = rank, y = method, size = count, color = rank)) +
   geom_point(alpha = 0.85) +
@@ -305,41 +303,14 @@ p2 <- ggplot(rank.count, aes(x = rank, y = method, size = count, color = rank)) 
     legend.key.width = unit(0.05, "in"),   
     axis.text.x = element_text(angle = 45, hjust = 1)
   )+
-  xlim(0.6,5.2)
+  xlim(0.6,6.2)
 p2
 
 plot_grid(plotlist = list(p1,p2), nrow = 2, rel_heights = c(1,1), labels = c("A", "B"))
 ggsave('./Fig/Fig4.pdf', width = 6.69, height = 4)
 
-# plot.df.sp <- plot.df
-# plot.df.sp$resolution <- "spot"
-# plot.df.sc <- plot.df
-# plot.df.sc$resolution <- "cell"
-# plot.df <- rbind(plot.df.sp,plot.df.sc)
-# write.csv(plot.df,"Fig/fig4B.csv",row.names = F)
-plot.df <- read.csv("Fig/fig4B.csv")
-conc.df <- read.csv("Fig/fig4A+figS.csv")
-summary_df_rob1 <- plot.df %>%
-  group_by(method,metric) %>%
-  summarise(values = mean(value, na.rm = TRUE)) %>%
-  pivot_wider(
-    names_from = c(metric),    
-    values_from = values,         
-    names_glue = "{metric}") %>% 
-  column_to_rownames('method')
-
-summary_df_rob2 <- conc.df %>%
-  group_by(method) %>%
-  summarise(Concordance = mean(mean_conc, na.rm = TRUE)) %>% 
-  column_to_rownames('method')
-
-summary_df <- read.csv("metrics_summary.csv", row.names = 1)
-summary_df <- summary_df %>%
-  mutate(
-    Correlation   = summary_df_rob1[rownames(summary_df),"Correlation"],
-    Jaccard_alpha = summary_df_rob1[rownames(summary_df),"Jaccard_alpha"],
-    Jaccard_top50 = summary_df_rob1[rownames(summary_df),"Jaccard_top50"],
-    Concordance   = summary_df_rob2[rownames(summary_df),"Concordance"]
-  )
-
-write.csv(summary_df, "metrics_summary.csv", row.names = TRUE)
+#summary sc and spot metrics(with the file: fig4_rotate_sc.R)
+plot.df.sp <- plot.df
+plot.df.sp$resolution <- "spot"
+conc.df.sp=conc.df
+colnames(conc.df.sp)[2]="angle"

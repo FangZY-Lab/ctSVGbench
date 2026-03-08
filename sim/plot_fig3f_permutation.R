@@ -25,12 +25,12 @@ library(dplyr)
 library(tidyr)
 library(ggpubr)
 source('./my_theme.R')
-source('./sim/utils/sim-bench.R')
+source('./sim/utils/sim-bench-sc.R')
 
 
 dataset=  "SeqFish+_cortex"
 
-methods <- c('C-SIDE','spVC','CELINA','STANCE',"CTSV","ctsvg")
+methods <- c('C-SIDE','spVC_2',"spVC_1",'CELINA','STANCE',"CTSV","ctsvg")
 
 
 reps <- c(1:100)
@@ -42,18 +42,9 @@ get_wide_pval <- function(dataset,i){
   # res.ctsv=readRDS(here('real','res',sprintf('%s-CTSV.rds',dataset)))
   res.ctsv=readRDS(here('real','res',sprintf('%s-CTSV-null%s.rds',dataset,i)))
   
-  spVC=readRDS(here('real','res',sprintf('%s-spVC-null%s.rds',dataset,i)))
-  idx=match(names(res.celina),colnames(prop))
-  genes.v=names(spVC$results.varying)
-  res.spVC <- lapply(idx,function(ct){
-    pval=sapply(spVC$results.varying[genes.v],function(x){
-      x$p.value[paste0("gamma_X", ct)]
-    })
-    names(pval)=sapply(strsplit(names(pval),"\\."),"[[",1)
-    data.frame(pval = na.omit(pval))
-  })
+  res.spVC_2=readRDS(here('real','res',sprintf('%s-spVC_2-null%s.rds',dataset,i)))
   
-  names(res.spVC) <- names(res.celina)
+  res.spVC_1=readRDS(here('real','res',sprintf('%s-spVC_1-null%s.rds',dataset,i)))
   
   ctsvg=readRDS(here('real','res',sprintf('%s-ctsvg-null%s.rds',dataset,i)))
   if(is.null(ctsvg)){
@@ -69,7 +60,8 @@ get_wide_pval <- function(dataset,i){
   
   all_lists <- list(
     CSIDE = res.cside, 
-    spVC = res.spVC, 
+    spVC_2 = res.spVC_2,
+    spVC_1 = res.spVC_1,
     Celina = res.celina, 
     STANCE = res.stance,
     CTSV = res.ctsv, 
@@ -141,11 +133,6 @@ get_wide_pval <- function(dataset,i){
     mutate(across(everything(), ~ replace_na(., 1)))
 } 
 
-datasets.all <- unlist(lapply(reps,function(i){
-  unlist(lapply(methods,function(m){
-    sprintf('%s-%s-null%s.rds',dataset,m,i)
-  }))
-}))
 
 FPR_0.01 <- sapply(reps,function(i){
   pval=get_wide_pval(dataset = dataset,i)
@@ -230,13 +217,14 @@ p5 <- ggplot(data = FPR, aes(color = Method)) +
         legend.key.width = unit(0.05, "in"))+
   guides(
     color = guide_legend(
-      ncol = 1,                
-      byrow = TRUE,            
+      ncol = 1,                # 颜色图例按1行排列（核心修正）
+      byrow = TRUE,            # 按行填充图例项（而非按列）
       title.hjust = 0.5    )
       
   )+labs(color="")
 p5
 
+ggsave('Fig/permutation.pdf')
 
 summary_df_acc3 <- FPR %>% 
   mutate(cutoff=gsub('FPR_','FDR_',cutoff)) %>% 
