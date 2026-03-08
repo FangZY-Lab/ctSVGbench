@@ -23,7 +23,7 @@ library(RColorBrewer)
 library(patchwork)
 dataset <- c("Slide-seqV2_melanoma_GSM6025944_MBM13") 
 
-methods <- c('C-SIDE','spVC','CELINA','STANCE','CTSV')
+methods <- c('C-SIDE','spVC_1','CELINA','STANCE','CTSV')
 file <- sprintf('myRCTD_%s.rds',dataset)
 puck <- readRDS(here('real','puck',sprintf('myRCTD_%s.rds',dataset)))
 
@@ -32,26 +32,14 @@ res.celina=readRDS(here('real','res',sprintf('%s-CELINA.rds',dataset)))
 res.stance=readRDS(here('real','res',sprintf('%s-STANCE.rds',dataset)))
 res.ctsv=readRDS(here('real','res',sprintf('%s-CTSV.rds',dataset)))
 
-spVC=readRDS(here('real','res',sprintf('%s-spVC.rds',dataset)))
+res.spVC=readRDS(here('real','res',sprintf('%s-spVC_1.rds',dataset)))
 prop <- readRDS(here('real','prop',sprintf('myRCTD_%s.rds',dataset))) 
 pos <- readRDS(here('real','pos_subset',sprintf('myRCTD_%s.rds',dataset))) 
 
-genes.v=names(spVC$results.varying)
-idx=match(names(res.celina),colnames(prop))
-
-res.spvc <- lapply(idx,function(ct){
-  pval=sapply(spVC$results.varying[genes.v],function(x){
-    x$p.value[paste0("gamma_X", ct)]
-  })
-  names(pval)=sapply(strsplit(names(pval),"\\."),"[[",1)
-  data.frame(pval = na.omit(pval))
-})
-
-names(res.spvc) <- names(res.celina)
 
 all_lists <- list(
   CSIDE = res.cside, 
-  spVC = res.spvc, 
+  spVC_1 = res.spVC, 
   Celina = res.celina, 
   STANCE = res.stance,
   CTSV = res.ctsv
@@ -142,8 +130,6 @@ shared2 <- intersection_info %>% filter(method_count == 2)
 shared3 <- intersection_info %>% filter(method_count == 3)
 shared4 <- intersection_info %>% filter(method_count == 4)
 
-
-
 # --- Enrichment analysis ---
 gene_sets_sig <- df.sig %>%
   group_by(method, cell_type) %>%
@@ -181,18 +167,17 @@ for (i in seq_len(nrow(gene_sets_sig))) {
   ego_results[[paste(method_i, cell_i, sep = " ")]] <- ego_simple
 }
 
-all_terms <- unique(c(ego_results[[1]]$ID, ego_results[[2]]$ID, ego_results[[3]]$ID))
+all_terms <- unique(unlist(lapply(ego_results, function(x) x$ID)))
 
 # --- Top genes ---
 top_gene_list <- df.sig %>%
-  filter(cell_type=='Tumor cells') %>% 
   arrange(method, pval) %>%
   group_by(method) %>%
-  slice_head(n = 7) %>%
+  slice_head(n = 20) %>%
   summarise(top_genes = list(unique(gene_name))) %>%
   deframe()  
 
-common_top_genes <- Reduce(intersect, top_gene_list[c("C-SIDE","STANCE","Celina")])
+common_top_genes <- Reduce(intersect, top_gene_list)
 print(common_top_genes)
 
 genes_to_plot <- c("PMEL", "VIM", "GAPDH", "ENO1")
@@ -225,6 +210,7 @@ prop_long <- prop %>%
 prop_long$cell_type <- factor(prop_long$cell_type, levels = cell_type_order)
 
 # --- Save environment ---
+save.image(file = "./Fig/case_plot.rda")
 
 my_theme <- 
   theme(
@@ -235,7 +221,7 @@ my_theme <-
     strip.text  = element_text(size = 7)
   )
 
-methods <- c("C-SIDE", "Celina", "spVC", "STANCE","CTSV","ctSVG")
+methods <- c("C-SIDE", "Celina", "spVC_1", "STANCE","CTSV","ctSVG")
 colors <- c("#0073C2FF","#EFC000FF","#868686FF","#CD534CFF","#7AA6DCFF","#003C67FF")
 method_colors <- setNames(colors, methods)
 
@@ -245,12 +231,12 @@ prop.use <- prop[, -which(colnames(prop) == "Low quality.cells")]
 avg_props <- colMeans(prop.use, na.rm = TRUE)
 
 avg_df <- data.frame(
-  CellType = names(avg_props), 
-  Proportion = avg_props      
+  CellType = names(avg_props),  
+  Proportion = avg_props        
 )
 p0 <- ggplot(avg_df, aes(x = '', y = Proportion, fill = CellType)) +
   geom_bar(stat = "identity") +
-  labs(y="",x = 'MBM13',fill="Cell type") +
+  labs(y="",x = 'BMB13',fill="cell type") +
   theme_void(base_size = 7) +
   theme(legend.position = 'right',
         axis.title = element_text(),
@@ -330,10 +316,6 @@ ggsave('Fig/p3.pdf')
 p4 <- ggplot(plot_expr_log, aes(x = x, y = y, color = log_expr),alpha=0.5) +
   geom_point(size = 0.01) +
   scale_color_gradientn( colors = rev(brewer.pal(11, "RdYlBu"))) +  
-  # scale_color_gradientn(
-  #   colors = c("blue", "white", "red"),
-  #   name = "log1p(Expression)"
-  # ) + 
   coord_fixed() +
   facet_wrap(~gene) +
   theme_void()+
@@ -465,11 +447,10 @@ top_row <- plot_grid(
 final_plot <- plot_grid(
   top_row, pgo,
   ncol = 1,
-  rel_heights = c(1, 2), 
+  rel_heights = c(1, 2.45), 
   labels = c('','D')
   
 )
 
-ggsave("./Fig/Fig7.pdf", final_plot, width = 6.67, height = 6.6, units = "in")
-
+ggsave("./Fig/Fig7.pdf", final_plot, width = 6.67, height = 7.6, units = "in")
 

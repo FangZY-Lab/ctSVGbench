@@ -19,7 +19,11 @@ res <- lapply(files, function(f) {
 })
 res.df = do.call(rbind, res)
 res.df$dataset <- recode(res.df$dataset, 'SeqFish+_mouse_ob' = 'SeqFish+_mouse_OB')
+res.df$method <- recode(res.df$method, 'spVC' = 'spVC_2')
+res.df$method <- recode(res.df$method, 'ctsvg' = 'ctSVG')
+method_levels <- c("spVC_1","spVC_2","C-SIDE", "Celina", "STANCE","CTSV","ctSVG")
 
+res.df$method <- factor(res.df$method,levels = method_levels)
 
 res.df <- res.df %>%
   mutate(method = recode(method,
@@ -28,6 +32,10 @@ res.df <- res.df %>%
                          "STANCE" = "STANCE",
                          "spVC" = "spVC",
                          "ctsvg" = "ctSVG"))
+
+# Create label information
+
+# res.df$dataset <- recode(res.df$dataset, 'SeqFish+_mouse_ob' = 'SeqFish+_mouse_OB')
 
 # Convert seconds to formatted time (days/hours/minutes)
 sec_to_time <- function(x) {
@@ -51,7 +59,6 @@ CELINA_order_time <- res.df %>%
 
 res.df$dataset <- factor(res.df$dataset, levels = CELINA_order_time)
 
-
 # Plot 1: Execution time
 p1 <- ggplot(data = res.df) +
   geom_point(aes(x = n_spot, y = time, color = method),size=1) +
@@ -70,12 +77,13 @@ p1 <- ggplot(data = res.df) +
     )
   ) +
   theme(
-    legend.position = 'none',
+    legend.position = 'right',
     axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1),
     plot.margin = margin(10, 10, 10, 10)
   ) +
-  labs(y = "Run Time (log10 seconds)", fill = "",x="Number of cells") 
+  labs(y = "Run Time (log10 seconds)", fill = "",x="Number of cells")
 
+# Plot 2: Memory usage
 tile_height_p2 = 1
 CELINA_order_mem <- res.df %>%
   filter(method == "Celina") %>%
@@ -83,6 +91,7 @@ CELINA_order_mem <- res.df %>%
   pull(dataset)
 
 res.df$dataset <- factor(res.df$dataset, levels = CELINA_order_mem)
+
 p2 <- ggplot(res.df) +
   geom_point(aes(x = n_spot, y = Peak_RAM_Used_MiB/1024, color = method), size = 1) +
   geom_line(aes(x = n_spot, y = Peak_RAM_Used_MiB/1024, color = method)) +
@@ -94,14 +103,14 @@ p2 <- ggplot(res.df) +
   theme_minimal() +
   my_theme +
   theme(
-    legend.position = 'left',
+    legend.position = 'none',
     axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1),
     plot.margin = margin(10, 10, 10, 10)
   ) +
   labs(y = "Memory (GiB)", color = "Methods",x="Number of cells") 
 p2  
-
-plot_grid(p1,  p2, rel_widths = c(1,1.02), ncol = 2, labels = c("A", "B"))
+  
+plot_grid(p1,  p2, rel_widths = c(1.56,1), ncol = 2, labels = c("A", "B"))
 ggsave("./Fig/Fig5.pdf", width = 6.69, height = 3)
 
 
@@ -116,6 +125,7 @@ summary_df_sca <- res.df[(res.df$n_spot>1500&res.df$n_spot<2500),] %>%
 summary_df <- read.csv("metrics_summary.csv", row.names = 1)
 summary_df$CPU_time_2000 <- summary_df_sca[rownames(summary_df),"CPU_time"]
 summary_df$RAM_GB_2000 <- summary_df_sca[rownames(summary_df),"RAM_GB"]
+
 summary_df_sca <- res.df[(res.df$n_spot>4500&res.df$n_spot<5500),] %>%
   group_by(method) %>%
   summarise(
@@ -127,5 +137,4 @@ summary_df$CPU_time_5000 <- summary_df_sca[rownames(summary_df),"CPU_time"]
 summary_df$RAM_GB_5000 <- summary_df_sca[rownames(summary_df),"RAM_GB"]
 
 write.csv(summary_df, "metrics_summary.csv", row.names = TRUE)
-summary_df$CPU_time<- NULL
-summary_df$RAM_GB <-NULL
+

@@ -44,6 +44,53 @@ for (target_size in cell_sample_sizes){
 }
 
 
+mylist <- readRDS('/home/user/Fanglab1/yh/ctSVGbench/real/input_sc/stereoseq_mosta_Dorsal_midbrain.rds')
+dataset <- 'Stereoseq_mosta_Dorsal_midbrain'
+file <- sprintf('myRCTD_%s.rds',dataset)
+
+pos.orign <- mylist$pos
+counts.orign <- mylist$counts
+pos <- crop_spatial_by_size(pos.orign, 2500)
+prop <- mylist$prop[rownames(pos),]
+prop <- prop[,colSums(prop)>0]
+counts <- counts.orign[,rownames(pos)]
+counts <- counts[rowSums(counts)>0,]
+puck <- SpatialRNA(coords=as.data.frame(pos), counts=counts)
+saveRDS(puck,file = here('real','puck',file))
+saveRDS(pos,file = here('real','pos',file))
+saveRDS(prop,file = here('real','prop',file))
+
+mylist <- readRDS('/home/user/Fanglab1/yh/ctSVGbench/real/input_sc/stereoseq_mosta_E16.5_E1S3_whole_brain.rds')
+dataset <- 'Stereoseq_mosta_E16.5_E1S3_whole_brain'
+file <- sprintf('myRCTD_%s.rds',dataset)
+pos.orign <- mylist$pos
+counts.orign <- mylist$counts
+pos <- crop_spatial_by_size(pos.orign, 2500)
+prop <- mylist$prop[rownames(pos),]
+prop <- prop[,colSums(prop)>0]
+counts <- counts.orign[,rownames(pos)]
+counts <- counts[rowSums(counts)>0,]
+puck <- SpatialRNA(coords=as.data.frame(pos), counts=counts)
+saveRDS(puck,file = here('real','puck',file))
+saveRDS(pos,file = here('real','pos',file))
+saveRDS(prop,file = here('real','prop',file))
+
+
+mylist <- readRDS('/home/user/Fanglab1/yh/ctSVGbench/real/input_sc/MERFISH_hypothalamus.rds')
+file <- 'MERFISH_hypothalamus.rds'
+pos <- mylist$pos
+prop <- mylist$prop[rownames(pos),]
+prop <- prop[,colSums(prop)>0]
+saveRDS(pos,file = here('real','pos',file))
+saveRDS(prop,file = here('real','prop',file))    
+
+mylist <- readRDS('/home/user/Fanglab1/yh/ctSVGbench/real/input_sc/SeqFish+_cortex.rds')
+file <- 'SeqFish+_cortex.rds'
+pos <- mylist$pos
+prop <- mylist$prop[rownames(pos),]
+prop <- prop[,colSums(prop)>0]
+saveRDS(pos,file = here('real','pos',file))
+saveRDS(prop,file = here('real','prop',file))    
 
 library(RhpcBLASctl)
 blas_set_num_threads(1)
@@ -216,7 +263,7 @@ for (target_size in cell_sample_sizes){
               sep = ',',
               row.names = FALSE)
   
-  #fit the spVC model
+  #fit the spVC model (2-step)
   gc1 <- gc(reset = TRUE)
   time = system.time({
     boundary <- readRDS(here('real','boundary',file))
@@ -245,7 +292,7 @@ for (target_size in cell_sample_sizes){
       }
     )
     
-    saveRDS(res.spvc,here('real','res',sprintf('%s-spVC.rds',dataset)))
+    saveRDS(res.spvc,here('real','res',sprintf('%s-spVC_2.rds',dataset)))
   })
   
   gc2 <- gc()
@@ -259,9 +306,57 @@ for (target_size in cell_sample_sizes){
   )
   
   write.table(computation, 
-              file =here('real','computation',sprintf('%s-spVC.csv',dataset)),
+              file =here('real','computation',sprintf('%s-spVC_2.csv',dataset)),
               sep = ',',
               row.names = FALSE)
+  
+  #fit the spVC model (1-step)
+  gc1 <- gc(reset = TRUE)
+  time = system.time({
+    boundary <- readRDS(here('real','boundary',file))
+    Tr.cell <- TriMesh(boundary, n = 2) # n : triangulation fineness
+    V <- as.matrix(Tr.cell$V) 
+    Tr <- as.matrix(Tr.cell$Tr)  
+    
+    # Fit the spVC models safely
+    res.spvc <- tryCatch(
+      {
+        suppressWarnings(
+          test.spVC(
+            Y = counts,
+            X = prop,
+            S = pos,
+            V = V,
+            Tr = Tr,
+            para.cores = ncores,
+            twostep = FALSE
+          )
+        )
+        
+      },
+      error = function(e) {
+        message("test.spVC failed: ", e$message)
+        NULL
+      }
+    )
+    
+    saveRDS(res.spvc,here('real','res',sprintf('%s-spVC_1.rds',dataset)))
+  })
+  
+  gc2 <- gc()
+  computation = data.frame(
+    time = time[['elapsed']],
+    n_spot = ncol(counts),
+    n_gene = nrow(counts),
+    dataset = dataset,
+    Peak_RAM_Used_MiB = sum(gc2[,6] - gc1[,6]),
+    method = "spVC"
+  )
+  
+  write.table(computation, 
+              file =here('real','computation',sprintf('%s-spVC_1.csv',dataset)),
+              sep = ',',
+              row.names = FALSE)              
   
   ### Create Celina object ---
   # celltype_to_test <- names(tail(sort(colSums(prop)),3))
@@ -358,7 +453,7 @@ for (target_size in cell_sample_sizes){
   #fit the CTSV model 
   gc1 <- gc(reset = TRUE)
   time = system.time({
-    spe <- SpatialExperiment(assay = counts[,rownames(prop)], colData = pos[rownames(prop),], spatialCoordsNames = c('x', 'y')) 
+    spe <- SpatialExperiment(assay = counts[,rownames(prop)], colData = pos[rownames(prop),], spatialCoordsNames = c('x', 'y')) ##counts must be matrix
     CTSV.results <- CTSV(spe, W = as.matrix(prop), num_core = ncores) 
     res.ctsv.matrix <- CTSV.results$pval
     res.ctsv <- setNames(

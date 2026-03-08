@@ -22,23 +22,23 @@ calc_false_positive_rate <- function(dat.pval.wide, alpha = 0.05) {
   # 3. define negative gene classes
   pval_long <- pval_long %>%
     mutate(
-      neg_class = case_when(
+      gene_class = case_when(
         # potentially affected negatives
-        celltype == 4 & gene_id >= 1   & gene_id <= 200 ~ "affected",
-        celltype == 5 & gene_id >= 76  & gene_id <= 150 ~ "affected",
-        celltype == 6 & gene_id >= 1   & gene_id <= 75  ~ "affected",
+        celltype == 4 & gene_id >= 1   & gene_id <= 200 ~ "non-targeted ctSVG",
+        # celltype == 5 & gene_id >= 76  & gene_id <= 150 ~ "affected_negative",
+        # celltype == 6 & gene_id >= 1   & gene_id <= 75  ~ "affected_negative",
         
         # pure negatives
-        celltype %in% c(4, 5, 6) & gene_id >= 200 & gene_id <= 1200 ~ "non-affected",
+        celltype %in% c(4) & gene_id > 200 & gene_id <= 1200 ~ "non-ctSVG",
         
         TRUE ~ NA_character_
       )
     ) %>%
-    filter(!is.na(neg_class))
+    filter(!is.na(gene_class))
   
   # 4. calculate false positive rate
   res_by_ct <- pval_long %>%
-    group_by(method, celltype, neg_class) %>%
+    group_by(method, celltype, gene_class) %>%
     summarise(
       n_total = n(),
       n_fp    = sum(pval < alpha, na.rm = TRUE),
@@ -48,7 +48,7 @@ calc_false_positive_rate <- function(dat.pval.wide, alpha = 0.05) {
     mutate(level = "celltype")
   
   res_overall <- pval_long %>%
-    group_by(method, neg_class) %>%
+    group_by(method, gene_class) %>%
     summarise(
       n_total = n(),
       n_fp    = sum(pval < alpha, na.rm = TRUE),

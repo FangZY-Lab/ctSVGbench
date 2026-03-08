@@ -1,6 +1,5 @@
 library(ggplot2)
 library(scales)
-library(here)
 library(tidyr)
 library(dplyr)
 library(tibble)
@@ -12,6 +11,7 @@ library(ggpubr)
 library(ggtext)
 library(ggprism)
 library(ggpmisc)
+library(here)
 source(here('real','utils',"rotate_bench.R"))
 source('./my_theme.R')
 
@@ -20,16 +20,13 @@ datasets <- c(
   "StereoSeq_CBMSTA_Mouse1_T189",
   "StereoSeq_CBMSTA_Mouse2_T349",
   "MERFISH_hypothalamus",
-  "SeqFish+_cortex"  
+  "SeqFish+_cortex"
 )
-# conc.df.sc=conc.df
-# colnames(conc.df.sc)[2]="angle"
-# conc.df <- rbind(conc.df.sp,conc.df.sc)
-# write.csv(conc.df,file = "Fig/fig4A+figS.csv")
+methods <- c('C-SIDE','CELINA','STANCE',"CTSV","ctsvg") # 'spVC_1' and 'spVC_2' fail to identify significant genes in most datasets
+
 
 for (dataset in datasets){
-
-  methods <- c('C-SIDE','CELINA','STANCE',"CTSV","ctsvg",'spVC')[-c(6)]  # spVC excluded: returned empty results
+  methods <- c('C-SIDE','CELINA','STANCE',"CTSV","ctsvg") 
   
   conc.res <- do.call(rbind,lapply(methods,function(method){
     dat.pval.wide <- get_wide_pval(dataset,method)
@@ -104,7 +101,6 @@ library(dplyr)
 library(data.table)
 
 conc.all <- lapply(datasets, function(dataset) {
-  methods <- c('C-SIDE','CELINA','STANCE',"CTSV","ctsvg",'spVC')[-c(6)]
   
   conc.res <- do.call(rbind, lapply(methods, function(method) {
     dat.pval.wide <- get_wide_pval(dataset, method)
@@ -220,7 +216,7 @@ calc_similarity <- function(dat.pval.wide,
   return(result)
 }
 
-methods <- c('C-SIDE','CELINA','STANCE',"CTSV","ctsvg",'spVC')[-c(6)]
+methods <- c('C-SIDE','CELINA','STANCE',"CTSV","ctsvg")
 
 cor.res <- expand.grid(dataset = datasets, method = methods, stringsAsFactors = FALSE) %>%
   pmap_dfr(function(dataset, method) {
@@ -307,12 +303,25 @@ p2 <- ggplot(rank.count, aes(x = rank, y = method, size = count, color = rank)) 
     legend.key.size = unit(0.05, "in"), 
     legend.key.width = unit(0.05, "in"),   
     axis.text.x = element_text(angle = 45, hjust = 1)
-  )+
-  xlim(0.8,5.1)
+  )
 p2
 
 plot_grid(plotlist = list(p1,p2), nrow = 2, rel_heights = c(1,1), labels = c("A", "B"))
-ggsave('./Fig/s/rotate_sc.pdf', width = 6.69, height = 4)
+ggsave('./Fig/Fig4.pdf', width = 6.69, height = 4)
+
+#summary sc and spot metrics(with the file: fig4_rotate_spot.R)
+plot.df.sc <- plot.df
+plot.df.sc$resolution <- "cell"
+plot.df <- rbind(plot.df.sp,plot.df.sc)
+write.csv(plot.df,"Fig/fig4B.csv",row.names = F)
+
+conc.df.sc=conc.df
+colnames(conc.df.sc)[2]="angle"
+conc.df <- rbind(conc.df.sp,conc.df.sc)
+write.csv(conc.df,file = "Fig/fig4A+figS.csv")
+
+plot.df <- read.csv("Fig/fig4B.csv")
+conc.df <- read.csv("Fig/fig4A+figS.csv")
 
 summary_df_rob1 <- plot.df %>%
   group_by(method,metric) %>%
@@ -321,6 +330,11 @@ summary_df_rob1 <- plot.df %>%
     names_from = c(metric),    
     values_from = values,         
     names_glue = "{metric}") %>% 
+  column_to_rownames('method')
+
+summary_df_rob2 <- conc.df %>%
+  group_by(method) %>%
+  summarise(Concordance = mean(mean_conc, na.rm = TRUE)) %>% 
   column_to_rownames('method')
 
 summary_df <- read.csv("metrics_summary.csv", row.names = 1)

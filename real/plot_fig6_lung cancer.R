@@ -100,7 +100,7 @@ source('./my_theme.R')
 
 sig <- list()
 for(dataset in datasets){
-  methods <- c('C-SIDE','spVC','CELINA','STANCE',"CTSV","ctsvg")
+  methods <- c('C-SIDE','spVC_1','CELINA','STANCE',"CTSV","ctsvg")
   file <- sprintf('myRCTD_%s.rds', dataset)
   puck <- readRDS(here('real','puck', sprintf('myRCTD_%s.rds', dataset)))
   ctsvg=readRDS(here('real','res',sprintf('%s-ctsvg.rds',dataset)))
@@ -117,26 +117,11 @@ for(dataset in datasets){
   
   prop <- readRDS(here('real','prop', sprintf('myRCTD_%s.rds', dataset))) 
   pos <- readRDS(here('real','pos', sprintf('myRCTD_%s.rds', dataset))) 
-  spVC=readRDS(here('real','res',sprintf('%s-spVC.rds',dataset)))
-  if(is.null(spVC)){
-    res.spVC=NULL
-  }else {
-    idx=match(names(res.celina),colnames(prop))
-    genes.v=names(spVC$results.varying)
-    res.spVC <- lapply(idx,function(ct){
-      pval=sapply(spVC$results.varying[genes.v],function(x){
-        x$p.value[paste0("gamma_X", ct)]
-      })
-      names(pval)=sapply(strsplit(names(pval),"\\."),"[[",1)
-      data.frame(pval = na.omit(pval))
-    })
-    
-    names(res.spVC) <- names(res.celina)
-  }
+  res.spVC=readRDS(here('real','res',sprintf('%s-spVC_1.rds',dataset)))
   
   # Combine all method results
   all_lists <- list(CSIDE = res.cside,
-                    spVC = if (is.null(spVC)) NULL else res.spVC,
+                    spVC_1 = res.spVC,
                     Celina = res.celina, 
                     STANCE = res.stance,
                     ctSVG = res.ctsvg,
@@ -187,8 +172,6 @@ for(dataset in datasets){
   df.sig <- dat.pval %>% filter(pval < alpha)
   sig[[dataset]] <- df.sig
 }
-# write.csv(sig_df,'Fig/TableS3_lung_ctSVG_gene.csv',row.names = F)
-
 
 # Step 3: Compute Jaccard Similarity Across Patients
 sig_df <- bind_rows(sig, .id = "sample_id") %>%
@@ -199,16 +182,18 @@ sig_df <- bind_rows(sig, .id = "sample_id") %>%
 cols <- RColorBrewer::brewer.pal(5, "Set2")
 names(cols) <- c("Cancer", "Endothelial", "Epithelial", "Immune", "Stroma")
 
-# Compute Jaccard index between patients for each method and cancer type
 gene_sets2 <- sig_df %>%
   group_by(cancer, cell_type, cancer_sample, method) %>%
   summarise(genes = list(unique(gene_name)), .groups = "drop") %>% 
   subset(cell_type == "Stroma")
 
+
+# Compute Jaccard index between patients for each method and cancer type
+
 jaccard_index <- function(a, b) length(intersect(a, b)) / length(union(a, b))
 
 jar_results <- gene_sets2 %>%
-  group_by(cancer, method, cell_type) %>%
+  group_by(cancer, method) %>%
   filter(n_distinct(cancer_sample) >= 2) %>%
   reframe({
     samples <- unique(cancer_sample)
@@ -224,12 +209,10 @@ jar_results <- gene_sets2 %>%
     })
   }) %>%
   ungroup()
-
-
 summary_df <- jar_results %>%
   group_by(method, cancer, cell_type) %>%
   summarise(mean_jaccard = mean(jaccard), sd_jaccard = sd(jaccard), .groups = "drop")
-method_levels <- c("C-SIDE", "spVC", "Celina", "STANCE","CTSV","ctSVG")
+method_levels <- c("spVC_2","spVC_1","C-SIDE", "Celina", "STANCE","CTSV","ctSVG")
 summary_df$method <- factor(summary_df$method, levels = method_levels)
 jar_results$method  <- factor(jar_results$method,  levels = method_levels)
 
@@ -237,7 +220,7 @@ jac_plot <- ggplot(summary_df, aes(x = cancer, y = mean_jaccard, fill = cancer))
   geom_col(alpha = 1) +
   geom_errorbar(aes(ymin = mean_jaccard - sd_jaccard, ymax = mean_jaccard + sd_jaccard), width = 0.1) +
   geom_jitter(data = jar_results, aes(x = cancer, y = jaccard), width = 0.13, size = 0.1, color = "black") +
-  facet_wrap(~method, ncol = 5) +
+  facet_wrap(~method, nrow=1) +
   theme_minimal(base_size = 7) +
   my_theme+
   scale_fill_manual(values = c("#33A02C", "#1F78B4")) +
@@ -277,7 +260,7 @@ df$dataset <- substr(df$dataset, 10, 30)
 df <- df %>%
   mutate(cancer = substr(dataset, 1, 4))
 
-df$method <- factor(df$method,levels = c("C-SIDE","spVC", "Celina", "STANCE","CTSV","ctSVG")) 
+df$method <- factor(df$method,levels = method_levels) 
 
 df_stat_LUSC <- df %>%
   filter(cancer == "LUSC") %>%
@@ -294,7 +277,7 @@ lusc_cor <- ggplot(
   aes(x = log10(expr + 0.5), y = logp)
 ) +
   geom_point(alpha = 0.4) +
-
+  ylim(0,50)+
   facet_grid(dataset ~ method) +
 
   stat_cor(
@@ -302,7 +285,7 @@ lusc_cor <- ggplot(
     method = "spearman",
     label.x.npc = "left",
     label.y.npc = "top",
-    size = 1.5
+    size = 1
   ) +
 
   labs(
@@ -312,9 +295,12 @@ lusc_cor <- ggplot(
   theme_minimal() +
   my_theme +
   theme(plot.margin = margin(0, 2, 0, 2),
-    axis.text.x = element_text(size=4))
+    axis.text.x = element_text(size=4))+
+    scale_x_continuous(labels = number_format(accuracy = 0.1))  
 
 
+
+ggsave('./Fig/s/lusc_cor.pdf', width = 6.69, height = 3.69)
 
 
 df_stat_LUAD <- df %>%
@@ -332,17 +318,15 @@ luad_cor <- ggplot(
   aes(x = log10(expr + 0.5), y = logp)
 ) +
   geom_point(alpha = 0.4) +
-  
   facet_grid(dataset ~ method) +
-  
+  ylim(0,50)+
   stat_cor(
     data = df_stat_LUAD,         
     method = "spearman",
     label.x.npc = "left",
     label.y.npc = "top",
-    size = 1.5
+    size = 1
   ) +
-  
   labs(
     x = expression(log[10]("normalized mean expression")),
     y = expression(-log[10](pval))
@@ -350,7 +334,8 @@ luad_cor <- ggplot(
   theme_minimal() +
   my_theme +
   theme(plot.margin = margin(0, 2, 0, 2),
-  axis.text.x = element_text(size=5))
+  axis.text.x = element_text(size=5))+
+  scale_x_continuous(labels = number_format(accuracy = 0.1))  
 
 ggsave('./Fig/s/luad_cor.pdf', width = 6.69, height = 3.69)
 
@@ -383,29 +368,29 @@ plot_vl <- ggplot(cor_res, aes(x = method, y = cor)) +
 
 plot_vl
 
-# Step 5: Combine and Save Final Figures
-p1 <- ggdraw() +
-  draw_plot(jac_plot, x = 4/6.29, y = 0, width = 2.29/6.29, height = 1)
+# Combine and Save Final Figures
+library(cowplot)
+library(magick)
+library(grid)
 
-p2 <- plot_grid(lusc_cor,plot_vl, ncol = 2,rel_widths = c(1,0.4),
+imgA <- image_read_pdf("./Fig/Fig6-A.pdf", density = 600)
+gA <- rasterGrob(as.raster(imgA), interpolate = TRUE)
+pA <- ggdraw() + draw_grob(gA)
+
+p1 <- plot_grid(
+  pA, jac_plot,
+  ncol = 2,
+  rel_widths = c(3.84, 2.45),
+  labels = c("A", "B"),
+  label_x = -0.01
+)
+
+p2 <- plot_grid(luad_cor,plot_vl, ncol = 2,rel_widths = c(1,0.4),
                 labels = c('C',"D"),label_x = -0.01,label_y = 1.01)
 
 final_plot <- plot_grid(p1, p2, nrow = 2, rel_heights = c(3, 3.7))
-ggsave('./Fig/Fig6.1.pdf', width = 6.69, height = 6.7)
+ggsave('./Fig/Fig6.pdf', width = 6.69, height = 6.7)
 
 
-blank_plot <- ggplot() + 
-  theme_void() 
 
-p1 <- ggdraw() +
-  draw_plot(jac_plot, x = 4/6.29, y = 0, width = 2.29/6.29, height = 1)
 
-p2 <- plot_grid(
-  blank_plot,  
-  plot_vl, 
-  ncol = 2,
-  rel_widths = c(1,0.4),
-  labels = c('C',"D"),  
-  label_x = -0.01,
-  label_y = 1.01
-)

@@ -22,10 +22,11 @@ library(Seurat)
 library(Matrix)
 library(arrow)  
 library(jsonlite)
-source('/home/user/Fanglab1/yh/ctSVGbench/real/CTSV.R')
+library(CTSV)
+library(SpatialExperiment)
 library(here)
-
-ncores=20
+library(pscl)
+library(qvalue)
 
 rotate_points <- function(original_points, angle_degrees) { 
   angle_radians <- angle_degrees * (pi / 180) # Convert degrees to radians 
@@ -36,7 +37,6 @@ rotate_points <- function(original_points, angle_degrees) {
   return(output) 
 }
 
-
 datasets <- c(
   "StereoSeq_CBMSTA_Marmoset1_T514",
   "StereoSeq_CBMSTA_Mouse1_T189",
@@ -45,13 +45,14 @@ datasets <- c(
   "SeqFish+_cortex"  
 )
 
+
 angles <- c(0,30,90)
 for (dataset in datasets){
   for (angle_degrees in angles){
-    ncores=20    
+    ncores=20
     file <- sprintf('myRCTD_%s.rds',dataset)
     puck<- readRDS(here('real','puck',file))
-    pos.original <- readRDS(here('real','pos_r',file))
+    pos.original <- readRDS(here('real','pos',file))
     pos <- rotate_points(pos.original, angle_degrees) 
     pos <- as.data.frame(pos) 
     counts.orign <- puck@counts
@@ -87,7 +88,7 @@ for (dataset in datasets){
       return(colnames(prop_top3)[which.max(row)])
     })
     counts <- counts[Matrix::rowSums(counts != 0) > 0, ]  
-    
+    print(dim(counts))
     ### Create C-SIDE object ---
     puck <- SpatialRNA(coords = as.data.frame(pos), counts = counts)
     reference <- Reference(counts = counts, cell_types = factor(cell_type), min_UMI = -Inf)
@@ -160,7 +161,7 @@ for (dataset in datasets){
     saveRDS(res.celina,here('real','res',sprintf('%s-r%s-CELINA.rds',dataset,angle_degrees)))
     
     ### Create STANCE object ---
-    ncores=110
+    ncores=80
     
     Obj.STANCE<- creatSTANCEobject(counts = counts,
                                    pos = pos,
@@ -226,7 +227,7 @@ for (dataset in datasets){
     
     
     #fit the spVC model
-    boundary <- readRDS(here('real','boundary_r',file))
+    boundary <- readRDS(here('real','boundary',file))
     boundary.r <- rotate_points(boundary, angle_degrees = angle_degrees)
     Tr.cell <- TriMesh(boundary.r, n = 2) # n : triangulation fineness
     V <- as.matrix(Tr.cell$V) 
@@ -253,11 +254,34 @@ for (dataset in datasets){
       }
     )
     
-    saveRDS(res.spvc,here('real','res',sprintf('%s-r%s-spVC.rds',dataset,angle_degrees)))
+    saveRDS(res.spvc,here('real','res',sprintf('%s-r%s-spVC_2.rds',dataset,angle_degrees)))
+    
+    res.spvc_1step <- tryCatch(
+      {
+        suppressWarnings(
+          test.spVC(
+            Y = counts,
+            X = prop_top3,
+            S = pos,
+            V = V,
+            Tr = Tr,
+            para.cores = ncores,
+            twostep =F
+          )
+        )
+        
+      },
+      error = function(e) {
+        message("test.spVC failed: ", e$message)
+        NULL
+      }
+    )
+    
+    saveRDS(res.spvc_1step,here('real','res',sprintf('%s-r%s-spVC_1.rds',dataset,angle_degrees)))
+    
     
     #fit the CTSV model 
-    ncores=70
-    spe <- SpatialExperiment(assay = counts[,rownames(prop_top3)], colData = pos[rownames(prop_top3),], spatialCoordsNames = c('x', 'y')) 
+    spe <- SpatialExperiment(assay = as.matrix(counts[,rownames(prop_top3)]), colData = pos[rownames(prop_top3),], spatialCoordsNames = c('x', 'y')) 
     CTSV.results <- CTSV(spe, W = as.matrix(prop_top3), num_core = ncores) 
     res.ctsv.matrix <- CTSV.results$pval
     res.ctsv <- setNames(

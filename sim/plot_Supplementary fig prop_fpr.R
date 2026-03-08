@@ -3,9 +3,11 @@ library(tidyr)
 library(stringr)
 library(reshape2)
 library(ggplot2)
+library(here)
 patterns <- c("pathology","hotspot", "stripe", "gradient",  "periodic", "neighbor")
 paramset = 'P1'
-
+source('./sim/utils/sim-bench-sc.R')
+source('./my_theme.R')
 dts_sp <- c(
   "ST_PDAC",
   "Visium_liver",
@@ -24,7 +26,7 @@ dts_sp <- c(
   "Slide-seqV2_melanoma_GSM6025940_MBM08",
   "Slide-seqV2_melanoma_GSM6025949_ECM08",
   "Slide-seqV2_melanoma_GSM6025950_ECM10"  
-)#17个
+)#17
 
 pval_long <- do.call(rbind, lapply(dts_sp, function(dt) {
   do.call(rbind, lapply(patterns, function(pt) {

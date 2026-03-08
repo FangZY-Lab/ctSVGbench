@@ -22,103 +22,22 @@ library(qvalue)
 library(Seurat)
 library(arrow)
 library(jsonlite)
-CTSV <- function(spe, W, num_core=1, BPPARAM = NULL){
-  if (missing(spe) || !is(spe,"SpatialExperiment") || is.null(rownames(spe)) || is.null(colnames(spe))) {
-    stop("Include SpatialExperient class object with rownames and colnames")
-  }
-  if (missing(W) || !is.matrix(W)) {
-    stop("Include cell-type proportion matrix of the matrix type.")
-  } 
-  if(as.integer(num_core) != as.numeric(num_core)){
-    stop("Input integer num of cores.")
-  }
-  Y <- as.matrix(t(assay(spe)))
-  
-  # Y <- t(assay(spe))
-  loc <- spatialCoords(spe)
-  if(sum(is.na(Y))>0 | sum(is.na(loc))>0 || sum(is.na(W)) > 0 || sum(rowSums(Y) == 0)>0 || sum(colSums(Y) == 0)>0 || sum(colSums(W) == 0)>0 || sum(rowSums(W) == 0)>0){
-    stop("Remove NaNs, columns with all zeros and rows with all zeros in datasets.")
-  }
-  if(nrow(loc)!= nrow(W) || sum(rownames(W) != colnames(spe))>0){
-    stop("Keep the number and names of spots consistent in gene expression matrix, location coordinate matrix and cell-type proportion matrix.")
-  }
-  if (is.null(BPPARAM)) {
-    BPPARAM <- BiocParallel::MulticoreParam(workers = num_core)
-  }
-  # make sure the sum of cell type proportions is equal to 1 in each spot.    
-  W <- W / rowSums(W)
-  # number of genes
-  G <- ncol(Y)
-  # number of spots
-  n <- nrow(loc)
-  # number of cell types
-  K <- ncol(W)
-  # normalize cell-type proportion matrix W to ensure the summation across cell types in one spot is equal to one.
-  W <- W / rowSums(W)
-  # Center and normalize coordinates of spots to have mean zero and standard deviation one.
-  S <- t(loc) - colMeans(loc)
-  S <- t(S / apply(S, 1, sd))
-  quan <- c(0.4,0.6)
-  psi1 <- quantile(abs(S[,1]), quan)
-  psi2 <- quantile(abs(S[,2]), quan)
-  P_VAL <- array(NA, dim = c(G, 2*K, 5))
-  pattern <- c("linear","gau1","gau2","cos1","cos2")
-  for(fit_pat in pattern){
-    if(fit_pat == "gau1"){
-      h1 <- exp(-S[,1]^2 / 2 / psi1[1]^2)
-      h2 <- exp(-S[,2]^2 / 2 / psi2[1]^2)
-    }else if(fit_pat == "gau2"){
-      h1 <- exp(-S[,1]^2 / 2 / psi1[2]^2)
-      h2 <- exp(-S[,2]^2 / 2 / psi2[2]^2)
-    }else if(fit_pat == "cos1"){
-      h1 <- cos(2*pi*S[,1] / psi1[1])
-      h2 <- cos(2*pi*S[,2] / psi2[1])
-    } else if(fit_pat == "cos2"){
-      h1 <- cos(2*pi*S[,1] / psi1[2])
-      h2 <- cos(2*pi*S[,2] / psi2[2])
-    }else{
-      h1 <- S[,1]
-      h2 <- S[,2]
-    }
-    # print(fit_pat)
-    Tmp <- cbind(W * h1, W * h2, W)
-    colnames(Tmp) <- seq_len(ncol(Tmp))
-    res <- do.call(rbind,BiocParallel::bplapply(seq_len(G), CTSV:::.P_gene,BPPARAM = BPPARAM,Y=Y,Tmp = Tmp,h1=h1,h2=h2))
-    P_VAL[,,match(fit_pat,pattern)] <- res
-    rownames(P_VAL[,,match(fit_pat,pattern)]) <- colnames(Y)
-  }
-  P_VAL[which(is.na(P_VAL))] <- 1
-  P_VAL[P_VAL == -1] <- 1
-  P_VAL <- tan((0.5 - P_VAL)*pi)
-  T_cau0 <- apply(P_VAL, c(1,2), mean)
-  P_val <- 1-pcauchy(T_cau0)
-  # convert q-values into q-values
-  Q_val <- matrix(qvalue(c(P_val))$qvalue, G, 2*K)
-  rownames(Q_val) <- colnames(Y)
-  return(list("pval" = P_val,
-              "qval" = Q_val))
-}
+
 run_analysis_for_pattern <- function(pt,  
                                      pos.use, prop.use, dt = dataset, boundary, 
                                      rep_id = 1, paramset='P1',
                                      ncores = 10) {
   source(here('sim','utils','generate_sc.R'))
-  st_code_path <- file.path("./sim/utils", paste0("generate_st_", paramset, ".R"))
-  if (!file.exists(st_code_path)) {
-    stop(paste("Script not found for paramset:", paramset))
-  }
-  source(st_code_path)
-  message("Running analysis with ", st_code_path)    
-  
-  # normalize proportions
+  source(here('sim','utils','generate_st.R'))
+  dropout_rate <- case_when(
+    paramset == 'P1' ~ 0.1,
+    paramset == 'P2' ~ 0.2,
+    paramset == 'P3' ~ 0.3,
+    TRUE ~ 0
+  )
   prop.use <- sweep(prop.use, 1, rowSums(prop.use), '/')
   
-  # generate spatial data and reference scRNA-seq
-  stlist <- generate_spatial_data(pos = pos.use, cell_prop = prop.use, boundary = boundary, pattern = pt, seed = rep_id)
-  refer.sc <- generate_sc(seed = rep_id)
-  
-  counts.sc <- refer.sc$expr_mat
-  celltypes <- refer.sc$celltypes
+  stlist <- generate_spatial_data(mu = 1, pos = pos.use, cell_prop = prop.use, boundary = boundary, pattern = pt, seed = rep_id, cell.level = TRUE, dropout_rate = dropout_rate)
   
   pos <- stlist$pos
   counts.orign <- stlist$counts
@@ -153,12 +72,13 @@ run_analysis_for_pattern <- function(pt,
   counts <- as.matrix(counts)
   pos <- as.matrix(pos)
   prop_top3 <- as.matrix(prop_top3) 
-    
+  
   cell_type <- apply(prop_top3, 1, function(row) {
     return(colnames(prop_top3)[which.max(row)])
   })
   
-  ### Create C-SIDE object ---
+  
+  ## Create C-SIDE object ---
   puck <- SpatialRNA(coords = as.data.frame(pos), counts = counts)
   reference <- Reference(counts = counts, cell_types = factor(cell_type), min_UMI = -Inf)
   ct_tab <- table(reference@cell_types)
@@ -230,7 +150,7 @@ run_analysis_for_pattern <- function(pt,
   saveRDS(res.celina,here('sim','res',sprintf('%s-CELINA.rds',dataset)))
   
   ### Create STANCE object ---  
-  ncores=80
+  ncores=120
   Obj.STANCE<- creatSTANCEobject(counts = counts,
                                  pos = pos,
                                  prop = prop_top3,
@@ -318,11 +238,34 @@ run_analysis_for_pattern <- function(pt,
     }
   )
   
-  saveRDS(res.spvc,here('sim','res',sprintf('%s-spVC.rds',dataset)))
+  saveRDS(res.spvc,here('sim','res',sprintf('%s-spVC_2.rds',dataset)))
+  
+  res.spvc_1step <- tryCatch(
+    {
+      suppressWarnings(
+        test.spVC(
+          Y = counts,
+          X = as.matrix(prop_top3),
+          S = as.matrix(pos),
+          V = V,
+          Tr = Tr,
+          para.cores = ncores,
+          twostep =F
+        )
+      )
+      
+    },
+    error = function(e) {
+      message("test.spvc_1step failed: ", e$message)
+      NULL
+    }
+  )
+  
+  saveRDS(res.spvc_1step,here('sim','res',sprintf('%s-spVC_1.rds',dataset)))
   
   
   #fit the CTSV model 
-  spe <- SpatialExperiment(assay = counts[,rownames(prop_top3)], colData = pos[rownames(prop_top3),], spatialCoordsNames = c('x', 'y')) 
+  spe <- SpatialExperiment(assay = as.matrix(counts[,rownames(prop_top3)]), colData = pos[rownames(prop_top3),], spatialCoordsNames = c('x', 'y')) 
   CTSV.results <- CTSV(spe, W = as.matrix(prop_top3), num_core = ncores) 
   res.ctsv.matrix <- CTSV.results$pval
   res.ctsv <- setNames(
@@ -334,7 +277,7 @@ run_analysis_for_pattern <- function(pt,
     top3_ct
   )
   saveRDS(res.ctsv,here('sim','res',sprintf('%s-CTSV.rds',dataset)))  
-
+  
   
   cat(sprintf("Finished pattern %s", pt))
 }

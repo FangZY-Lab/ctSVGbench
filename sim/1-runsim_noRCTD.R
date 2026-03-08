@@ -11,14 +11,13 @@ library(parallel)
 dir.create("sim/res", recursive = TRUE, showWarnings = FALSE)
 
 # List of datasets to analyze
-dts <- c(
-  "ST_PDAC",
-  "Visium_mousebrain",
+datasets <-c(
   "StereoSeq_MDESTA",
   "Slide-seq_tumor",
   "Slide-seqV2_hippocampus",
-  "StereoSeq_CBMSTA_Macaque"
-)
+  "SeqFish+_mouse_ob",
+  "Slide-seqV2_melanoma_GSM6025938_MBM06"
+  )
 
 # Source the analysis function
 source(here('sim','utils',"run_analysis_for_pattern_sp_noRCTD.R"))
@@ -53,7 +52,7 @@ for (dataset in datasets) {
   boundary <- readRDS(here('sim','boundary', file.orign))
   
   # Define spatial patterns to simulate
-  patterns <- c("hotspot", "stripe", "pathology", "neighbor", "periodic", "gradient")
+  patterns <- c("hotspot", "stripe", "pathology")
   
   # Loop through patterns, replicates, and parameter sets
   for (pt in patterns) {
@@ -68,7 +67,7 @@ for (dataset in datasets) {
         # Run the analysis
         run_analysis_for_pattern(
           pt, pos.use, prop.use, dt = dataset, boundary = boundary, 
-          rep_id = rep, paramset = paramset, ncores = 80
+          rep_id = rep, paramset = paramset, ncores = 50
         )
       }
     }

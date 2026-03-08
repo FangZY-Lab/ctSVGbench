@@ -29,7 +29,7 @@ source('/home/user/Fanglab1/yh/ctSVGbench/real/CTSV.R')
 
 dataset=  "SeqFish+_cortex"
 
-for (i in c(34:49)){
+for (i in c(1:100)){
    ncores=20    
     file <- sprintf('myRCTD_%s.rds',dataset)
     puck<- readRDS(here('real','puck',file))
@@ -232,7 +232,7 @@ for (i in c(34:49)){
     }
   )
   
-  saveRDS(res.spvc,here('real','res',sprintf('%s-spVC-null%s.rds',dataset,i)))
+  saveRDS(res.spvc,here('real','res',sprintf('%s-spVC_2-null%s.rds',dataset,i)))
   
   
   #fit the CTSV model 
@@ -248,7 +248,38 @@ for (i in c(34:49)){
     ),
     top3_ct
   )
-  saveRDS(res.ctsv,here('real','res',sprintf('%s-CTSV-null%s.rds',dataset,i)))  
+  saveRDS(res.ctsv,here('real','res',sprintf('%s-CTSV-null%s.rds',dataset,i)))
+
+  #fit the spVC model
+  boundary <- readRDS(here('real','boundary',file))
+  Tr.cell <- TriMesh(boundary, n = 2) # n : triangulation fineness
+  V <- as.matrix(Tr.cell$V) 
+  Tr <- as.matrix(Tr.cell$Tr)  
+  
+  # Fit the spVC models safely
+  res.spvc <- tryCatch(
+    {
+      suppressWarnings(
+        test.spVC(
+          Y = counts,
+          X = prop_top3,
+          S = pos,
+          V = V,
+          Tr = Tr,
+          para.cores = ncores,
+          twostep =F
+        )
+      )
+      
+    },
+    error = function(e) {
+      message("test.spVC failed: ", e$message)
+      NULL
+    }
+  )
+  
+  saveRDS(res.spvc,here('real','res',sprintf('%s-spVC_1-null%s.rds',dataset,i)))
+    
 }                
 
 
